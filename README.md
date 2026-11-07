@@ -1,0 +1,161 @@
+# Lemmings for Windows 95 — Decompilation
+
+A matching decompilation and portable source reconstruction of **Lemmings for Windows 95** (originally developed by Visual Sciences and published by Psygnosis in 1995).
+
+The project achieves **dual-target compatibility**:
+1. **1:1 Matching Target**: Generates byte-identical binaries when compiled with the original compiler (Microsoft Visual C++ 2.2 with `/Ox`).
+2. **Portable Target**: Modern cross-compilation with llvm-mingw / GCC targeting 32-bit Windows using a minimal freestanding custom C runtime (`src/crt`), playable natively on modern Windows and under Wine / Proton.
+
+---
+
+## Progress & Status
+
+Across the entire game (1 executable + 7 DLLs), **688 out of 696 functions (98.85%)** are 100% byte-matched:
+
+| Module | Purpose | Functions Matched | Status |
+|---|---|---|---|
+| **`LEMMINGS.EXE`** | Main UI, windowing, menus, level selector | **333 / 334 (99.70%)** | 1 near-match (2 bytes off) |
+| **`FILEHAND.DLL`** | File I/O and archive resource extraction | **7 / 7 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **`GAMEOVER.DLL`** | Game over animation and result handling | **3 / 3 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **`LOADLVL.DLL`** | Level file format parser and terrain unpacker | **41 / 41 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **`READDIB.DLL`** | DIB / BMP bitmap loading and palette parsing | **17 / 17 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **`VSMEM.DLL`** | Custom sub-allocator and memory manager | **11 / 11 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **`RENDER.DLL`** | High-performance 2D blitter and dirty-rect engine | **75 / 77 (97.40%)** | 2 near-matches |
+| **`PROCESS.DLL`** | Lemming physics, state machine, skill actions, terrain collision | **201 / 206 (97.57%)** | 5 near-matches |
+| **Total** | | **688 / 696 (98.85%)** | **5 / 8 Modules 100% Matched** |
+
+---
+
+## Architecture & Module Breakdown
+
+* **`LEMMINGS.EXE`**: The Win32 application entry point (`WinMain`). Manages the main game loop, high-resolution timer synchronization, sound mixer trigger calls, dialog boxes, and child dock windows (`MapView`, `IconView`, `CounterView`).
+* **`RENDER.DLL`**: Software blitting engine designed by Visual Sciences. Supports full-screen scaling, clipped and masked RLE sprite blits, background terrain composition, and dirty-rectangle tracking (`MarkChanged`, `CopyChanged`, `StretchChanged`).
+* **`PROCESS.DLL`**: Lemming gameplay simulation. Contains class implementations for each lemming skill (Walker, Faller, Floater, Blocker, Climber, Builder, Basher, Miner, Digger, Exploder), physics calculation, and destructive bitmap terrain deformation.
+* **`LOADLVL.DLL`**: Reads `.LVL` binary level archives, extracts section chunks, decompresses level geometry, and instantiates trap/exit object instances.
+* **`READDIB.DLL`**: Parses Win32 Device Independent Bitmaps (DIB), handles 8-bit palette conversion, and produces raw surface buffers.
+* **`VSMEM.DLL`**: Visual Sciences custom pooled memory allocator tracking allocations by source file and line tag.
+* **`FILEHAND.DLL`**: Low-level Win32 file streaming and handle abstraction layer.
+* **`GAMEOVER.DLL`**: Handles win/loss end sequences and tally animations.
+
+---
+
+## Repository Structure
+
+```
+├── src/
+│   ├── include/       # Shared headers and DLL interfaces
+│   ├── crt/           # Lightweight freestanding C runtime stubs for MinGW
+│   ├── lemmings/      # LEMMINGS.EXE source code and resources
+│   ├── process/       # PROCESS.DLL source code (C++)
+│   ├── render/        # RENDER.DLL source code (C)
+│   ├── loadlvl/       # LOADLVL.DLL source code
+│   ├── readdib/       # READDIB.DLL source code
+│   ├── vsmem/         # VSMEM.DLL source code
+│   ├── filehand/      # FILEHAND.DLL source code
+│   └── gameover/      # GAMEOVER.DLL source code
+├── orig/
+│   └── WINLEMM/       # Original binary files (not tracked; user provided)
+├── tools/
+│   ├── match.py       # Instruction and relocation comparison engine
+│   ├── msvc/          # Scripts for MSVC 2.2 compilation & padding sweeps
+│   └── impdef.py      # Import library generation helper
+├── docs/
+│   └── DECOMP.md      # Detailed reverse-engineering methodology & compiler notes
+├── Makefile           # Portable MinGW build system
+└── HANDOFF.md         # Detailed decompilation ledger & session logs
+```
+
+---
+
+## Building the Project
+
+### 1. Portable Build (Modern Toolchain)
+
+The portable build uses `mingw-w64` (GCC or `llvm-mingw` Clang) and links against our freestanding CRT, requiring no external MSVC runtime DLLs.
+
+#### Prerequisites
+- **Linux / macOS**:
+  - `i686-w64-mingw32-gcc` and `i686-w64-mingw32-g++` (via package manager or [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)).
+  - GNU `make` and Python 3.
+- **Windows**:
+  - MSYS2 environment with `mingw-w64-i686-gcc` and `make`.
+
+#### Build Commands
+```bash
+# Build all DLLs and LEMMINGS.EXE into build/out/
+make -j4
+```
+
+### 2. Playing the Game
+
+To run the game, original asset files (`.DAT`, `.WAV`, `.MID`, `.LVL`) are required.
+
+1. Place the original game directory in `orig/WINLEMM/` (or copy the built files over an existing installation).
+2. Run:
+```bash
+# Copies the original game data and overlays the freshly compiled binaries into build/game/
+make game
+
+# Run under Wine or Windows:
+wine build/game/LEMMINGS.EXE
+```
+
+### 3. Matching Build Verification (MSVC 2.2)
+
+To verify matching status against the original 1995 binaries:
+```bash
+# Test an individual file:
+tools/msvc/try.sh PROCESS.DLL src/process/map.cpp
+
+# Compare with verbose side-by-side assembly diff:
+tools/msvc/try.sh PROCESS.DLL src/process/map.cpp -v -f Map::AddTrapType
+
+# Full module check:
+python3 tools/msvc/build.py PROCESS
+```
+
+---
+
+## Decompilation Tooling & AI Methodology
+
+This matching decompilation was achieved using a hybrid workflow combining industry-standard reverse engineering software, a custom Python-based verification and search harness, and autonomous AI-assisted pair programming.
+
+### 1. Reverse Engineering & Disassembly Tooling
+- **Ghidra**: Used for initial binary control-flow analysis, structure and type recovery, calling convention detection (`__thiscall` vs `__cdecl` / `__stdcall`), and generating initial draft C pseudocode.
+- **Hopper Disassembler & REA**: Used for basic-block slicing, control flow graph validation, and cross-referencing global variable access patterns.
+- **GNU Binutils (`objdump`, `nm`) & Capstone Engine**: Used for low-level inspection of COFF object relocations, symbol tables, and 16/32-bit instruction decoding.
+
+### 2. Custom Python Automation Toolchain (`tools/`)
+Because 1995 Visual C++ 2.2 (`c2.dll`) code generation is highly sensitive to Pentium U/V-pipeline scheduling, AST shape, and symbol table layout, a specialized suite of Python tools was created:
+- **`tools/match.py`**: Relocation-aware disassembly matching engine that compares compiled COFF objects directly against original PE sections, highlighting instruction, register, and displacement mismatches side by side.
+- **`tools/msvc/try.sh` & `cl.sh`**: Wine-driven compilation harness executing the authentic 1995 Visual C++ 2.2 compiler (`CL.EXE 9.10`) with `/Ox` optimization.
+- **`tools/msvc/declsearch.py` & `runperm.py`**: Automated combinatorial search scripts that test local variable declaration order permutations to resolve register allocation tie-breaking in `c2.dll`.
+- **`tools/msvc/padplan.py` & `padsweep.py`**: Symbol-table padding sweep tools (`extern int pad_...;`) that reconstruct unexported symbol table hashes and align internal compiler symbol counters without altering executable code semantics.
+- **`tools/msvc/mapcmp.py`**: Symbol map comparator ensuring that 100% of `.bss` and `.data` global variables land on their exact byte-level addresses in the original binary layout.
+- **`tools/dis.py` & `cstr.py`**: Automated tools for dumping annotated target assembly and extracting null-terminated string literals.
+
+### 3. AI Assistance & Autonomous Agents
+This repository was developed with AI assistance under human architecture direction and verification:
+- **Agents Involved**: **Google Antigravity**, **Anthropic Claude**, and **OpenAI Codex CLI**.
+- **Agent Roles**:
+  - Analyzing complex x86 assembly idioms and translating Ghidra pseudocode into idiomatic 1990s C/C++.
+  - Formulating hypotheses on Pentium U/V dual-pipe instruction pairings and AGI (Address Generation Interlock) stalls.
+  - Designing automated Python search specs to explore localized syntax permutations.
+  - Maintaining dual compatibility with both MSVC 2.2 byte-matching and modern `llvm-mingw` portable compilation.
+- **Deterministic Verification**: No AI-generated code is accepted on trust. Every function is strictly validated against deterministic ground truth:
+  - **Byte-Identical Matching**: Compiled under original Microsoft Visual C++ 2.2 (`/Ox`) under Wine and compared byte-for-byte against the 1995 retail binaries (`tools/match.py`, `tools/msvc/try.sh`).
+  - **Memory Layout & Symbol Placement**: Validated with `tools/msvc/mapcmp.py` to guarantee exact `.bss` and `.data` symbol address correspondence.
+  - **Portable Compilation**: Tested via clean compilation under modern `llvm-mingw` (`make -j4`) with custom freestanding CRT (`src/crt`), running natively and in Wine.
+- **Collaboration Protocol & Ledger**: Multi-agent collaboration boundaries and safety rules are governed by [`AGENTS.md`](AGENTS.md). For detailed disclosure on AI methodology and verification protocols, see [`AI_DISCLOSURE.md`](AI_DISCLOSURE.md). The complete technical log of all sessions, investigations, and breakthroughs is documented in [`HANDOFF.md`](HANDOFF.md).
+
+---
+
+## Licensing & Legal Disclaimer
+
+### Code License
+The reverse-engineered C and C++ source code in this repository is licensed under the **[MIT License](LICENSE)**.
+
+### Game Assets & Trademarks
+- **No Assets Included**: This repository contains only decompiled source code and build recipes. It does **not** distribute any proprietary game assets (sprites, textures, sounds, music, or level data). A legally acquired copy of the original retail game is required to play.
+- **Trademarks**: *Lemmings* is a registered trademark of Sony Interactive Entertainment Europe / Psygnosis / DMA Design. Visual Sciences is the original developer of the Windows 95 port. All trademarks and registered trademarks belong to their respective owners.
+- **Purpose**: This project is maintained strictly for educational, research, preservation, and historical study purposes.

@@ -1,0 +1,8 @@
+# address  name   (globals and functions without an address comment in the source)
+10003000 g_blocks
+10090000 g_blockCount
+10090004 g_used
+10090008 g_peak
+1009000c g_initCount
+10001400 strncpy
+10001424 _CRT_INIT

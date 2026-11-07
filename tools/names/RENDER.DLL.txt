@@ -1,0 +1,9 @@
+10007000 g_canvases
+1000f880 g_renderers
+10015000 g_numCanvases
+10015004 g_numRenderers
+1001500c g_blitTime
+10015010 g_copyTime
+1001503c g_blit
+10004ffe _CRT_INIT
+10004fe0 rand

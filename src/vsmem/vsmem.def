@@ -1,0 +1,7 @@
+LIBRARY VSMEM.DLL
+EXPORTS
+  _VSMEM_Allocate@8 = VSMEM_Allocate@8 @1
+  _VSMEM_DumpMemoryArray@0 = VSMEM_DumpMemoryArray@0 @2
+  _VSMEM_Free@4 = VSMEM_Free@4 @3
+  _VSMEM_FreeAllMemory@0 = VSMEM_FreeAllMemory@0 @4
+  _VSMEM_GetUsed@0 = VSMEM_GetUsed@0 @5

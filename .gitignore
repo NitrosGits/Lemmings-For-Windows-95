@@ -1,0 +1,49 @@
+# Build and tool outputs
+build/
+bin/
+*.obj
+*.o
+*.res
+*.res.o
+*.lib
+*.a
+*.dll
+*.exe
+*.map
+
+# Original game assets & analysis data (do NOT commit copyrighted files)
+orig/
+analysis/
+WINLEMM.zip
+*.zip
+*.7z
+*.rar
+*.tar.*
+
+# Intermediate scratch & test artifacts
+test_regalloc.*
+*.bak
+*.tmp
+*.swp
+*.patch
+
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Agent & editor metadata
+.codex/
+.claude/
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,0 +1,10 @@
+LANGUAGE 9, 1
+
+STRINGTABLE
+BEGIN
+    0   "Congratulations!"
+    1   "You truly are an Excellent"
+    2   "Lemmings Player"
+    3   "The Lemmings Saga continues"
+    4   "at a later date, watch this space"
+END

@@ -1,0 +1,35 @@
+LIBRARY PROCESS.DLL
+EXPORTS
+  "?CheckScript@@YGXH@Z" = CheckScript@4 @1
+  "?InitScript@@YGXPAD@Z" = InitScript@4 @2
+  "?SoundInit@@YGXGG@Z" = SoundInit@8 @3
+  "?SoundPlayFX@@YGXUtagPNT@@H@Z" = SoundPlayFX@12 @4
+  "?SoundProcess@@YGXXZ" = SoundProcess@0 @5
+  "?SoundQuit@@YGXXZ" = SoundQuit@0 @6
+  "?SoundRender@@YGXXZ" = SoundRender@0 @7
+  "?WaveIsEnabled@@YGHXZ" = WaveIsEnabled@0 @8
+  "?WaveIsVolumeEnabled@@YGHXZ" = WaveIsVolumeEnabled@0 @9
+  "?WaveSetVolume@@YGXH@Z" = WaveSetVolume@4 @10
+  "?WaveTestVolume@@YGXH@Z" = WaveTestVolume@4 @11
+  _CheckLemming@16 = CheckLemming@16 @12
+  _DeleteLemmings@0 = DeleteLemmings@0 @13
+  _GetLemmingDelay@0 = GetLemmingDelay@0 @14
+  _GetLemmingXY@8 = GetLemmingXY@8 @15
+  _GetLemmsHome@0 = GetLemmsHome@0 @16
+  _InitALemming@8 = InitALemming@8 @17
+  _InitialiseLemmings@12 = InitialiseLemmings@12 @18
+  _InitialiseProcess@0 = InitialiseProcess@0 @19
+  _MakeLemming@16 = MakeLemming@16 @20
+  _ProcessArmageddon@0 = ProcessArmageddon@0 @21
+  _ProcessLemmings@4 = ProcessLemmings@4 @22
+  _QuitProcess@0 = QuitProcess@0 @23
+  _RenderLemmings@8 = RenderLemmings@8 @24
+  _SetLemmingDelay@4 = SetLemmingDelay@4 @25
+  _SetLevelMap@12 = SetLevelMap@12 @26
+  _SetNumLemmings@4 = SetNumLemmings@4 @27
+  _SetSFXFlags@8 = SetSFXFlags@8 @28
+  _SetScale@4 = SetScale@4 @29
+  ; MinGW build only, for the test harness (tools/harness), which logs the
+  ; lemmings: the original's are at fixed addresses
+  g_numLemmings DATA
+  g_lemmings DATA

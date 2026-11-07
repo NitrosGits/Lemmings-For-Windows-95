@@ -1,0 +1,356 @@
+LANGUAGE 9, 1
+
+325 BITMAP "res/325.bmp"
+
+284 DIALOG 3, 15, 278, 232
+STYLE 0x90c800c0L
+CAPTION "Select Level"
+FONT 10, "MS Sans Serif"
+BEGIN
+    CONTROL "", 285, "ListBox", 0x50a00411L, 5, 30, 160, 135
+    CONTROL "Ok", 1, "Button", 0x58010000L, 200, 10, 65, 14
+    CONTROL "Cancel", 2, "Button", 0x50010000L, 200, 30, 65, 15
+    CONTROL "Lemmings ", 383, "IconTextClass", 0x50000000L, 89, 5, 100, 8
+    CONTROL "Choose a new Level", 383, "IconTextClass", 0x50000000L, 89, 15, 100, 10
+    CONTROL "User4", 330, "IconImageClass", 0x50000000L, 5, 170, 160, 50
+    CONTROL "--", 339, "IconTextClass", 0x50000000L, 196, 80, 10, 8
+    CONTROL "--", 340, "IconTextClass", 0x50000000L, 196, 100, 10, 8
+    CONTROL "-----", 341, "IconTextClass", 0x50000000L, 196, 125, 16, 8
+    CONTROL "User1", 327, "IconImageClass", 0x50000000L, 172, 70, 20, 25
+    CONTROL "User1", 328, "IconImageClass", 0x50000000L, 172, 95, 20, 25
+    CONTROL "User1", 329, "IconImageClass", 0x50000000L, 172, 120, 20, 25
+    CONTROL "User1", 331, "IconImageClass", 0x50000000L, 172, 155, 20, 25
+    CONTROL "User1", 332, "IconImageClass", 0x50000000L, 196, 155, 20, 25
+    CONTROL "User1", 333, "IconImageClass", 0x50000000L, 220, 155, 20, 25
+    CONTROL "User1", 334, "IconImageClass", 0x50000000L, 244, 155, 20, 25
+    CONTROL "User1", 335, "IconImageClass", 0x50000000L, 172, 195, 20, 25
+    CONTROL "User1", 336, "IconImageClass", 0x50000000L, 196, 195, 20, 25
+    CONTROL "User1", 337, "IconImageClass", 0x50000000L, 220, 195, 20, 25
+    CONTROL "User1", 338, "IconImageClass", 0x50000000L, 244, 195, 20, 25
+    CONTROL "-", 342, "IconTextClass", 0x50000000L, 176, 182, 14, 9
+    CONTROL "-", 343, "IconTextClass", 0x50000000L, 200, 182, 14, 9
+    CONTROL "-", 344, "IconTextClass", 0x50000000L, 224, 182, 14, 9
+    CONTROL "-", 345, "IconTextClass", 0x50000000L, 248, 182, 14, 9
+    CONTROL "-", 346, "IconTextClass", 0x50000000L, 176, 222, 14, 9
+    CONTROL "-", 347, "IconTextClass", 0x50000000L, 200, 222, 14, 9
+    CONTROL "-", 348, "IconTextClass", 0x50000000L, 224, 222, 14, 9
+    CONTROL "-", 349, "IconTextClass", 0x50000000L, 248, 222, 14, 9
+END
+
+SELECTLEVEL DIALOG 0, 0, 217, 193
+STYLE 0x90c800c0L
+CAPTION "Select Level"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL "OK", 1, "Button", 0x50010001L, 150, 5, 50, 14
+    CONTROL "Cancel", 2, "Button", 0x50010000L, 150, 30, 50, 14
+    CONTROL "Help", 381, "Button", 0x58010000L, 150, 55, 50, 14
+    CONTROL "", 382, "ListBox", 0x50a10103L, 5, 30, 81, 109
+    CONTROL "", 383, "Static", 0x50000007L, 95, 90, 108, 50
+    CONTROL "Selected Level", 383, "Static", 0x50020000L, 95, 80, 86, 8
+    CONTROL "Double click on a level name to play it.", 383, "Static", 0x50020000L, 5, 10, 140, 10
+    CONTROL "", 383, "Static", 0x50000007L, 95, 30, 45, 40
+    CONTROL "Icon", 383, "Static", 0x50020000L, 100, 35, 20, 15
+    CONTROL "No Level Chosen", 384, "Static", 0x50020000L, 5, 155, 200, 35
+    CONTROL "Level Description", 383, "Button", 0x50000007L, 1, 140, 214, 53
+END
+
+OPTIONSDLG DIALOG 0, 0, 221, 103
+STYLE 0x90c800c0L
+CAPTION "Lemmings Options"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL "OK", 1, "Button", 0x50010001L, 45, 85, 50, 14
+    CONTROL "Cancel", 2, "Button", 0x50010000L, 120, 85, 50, 14
+    CONTROL "Sound Effects On", 8193, "Button", 0x50010003L, 20, 15, 85, 10
+    CONTROL "Music On", 8194, "Button", 0x50010003L, 20, 30, 85, 10
+    CONTROL "Visual Sound Effects", 8195, "Button", 0x50010003L, 20, 45, 90, 10
+    CONTROL "Pause When Not On Top", 8196, "Button", 0x50010003L, 15, 65, 110, 10
+    CONTROL "Low Resolution", 388, "Button", 0x50030009L, 130, 20, 70, 10
+    CONTROL "High Resolution", 389, "Button", 0x50010009L, 130, 30, 70, 10
+    CONTROL "Graphics Options", -1, "Button", 0x50020007L, 125, 5, 80, 40
+    CONTROL "Zoom", -1, "Button", 0x50000007L, 135, 50, 64, 25
+    CONTROL "1", 1000, "Button", 0x50000009L, 139, 60, 19, 9
+    CONTROL "2", 1001, "Button", 0x50000009L, 159, 60, 18, 9
+    CONTROL "4", 1002, "Button", 0x50000009L, 179, 60, 16, 9
+    CONTROL "Sound", -1, "Button", 0x50000007L, 15, 5, 105, 55
+END
+
+ABOUTBOX DIALOG 22, 17, 167, 143
+STYLE 0xc800c0L
+CAPTION "About Lemmings"
+FONT 8, "System"
+BEGIN
+    CONTROL "OK", 1, "Button", 0x50030001L, 132, 2, 32, 14
+    CONTROL "Lemmings", -1, "Static", 0x50000003L, 3, 2, 18, 20
+    CONTROL "CompanyName", 1024, "Static", 0x50020000L, 25, 10, 100, 8
+    CONTROL "FileDescription", 1025, "Static", 0x50020000L, 25, 20, 82, 8
+    CONTROL "ProductVersion", 1026, "Static", 0x50020000L, 110, 20, 50, 8
+    CONTROL "\2511995 Psygnosis Ltd.", 1027, "Static", 0x50020000L, 25, 30, 137, 8
+    CONTROL "LegalTrademarks", 1028, "Static", 0x50020000L, 25, 50, 136, 16
+    CONTROL "Memory Size", 283, "Static", 0x50020000L, 9, 77, 151, 58
+    CONTROL "", 501, "Static", 0x50000004L, 25, 40, 138, 1
+    CONTROL "Information", -1, "Button", 0x50000007L, 5, 67, 159, 73
+END
+
+SELECTUSER DIALOG 0, 0, 209, 156
+STYLE 0x90c800c0L
+CAPTION "Select Player"
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL "", 1002, "Edit", 0x50810080L, 9, 31, 180, 13
+    CONTROL "", 1001, "ListBox", 0x50a10103L, 9, 56, 183, 73
+    CONTROL "OK", 1, "Button", 0x50010001L, 9, 139, 50, 14
+    CONTROL "Cancel", 2, "Button", 0x50010000L, 64, 139, 50, 14
+    CONTROL "Type new player name or select from list", -1, "Static", 0x50020000L, 37, 10, 153, 13
+    CONTROL "Lemmings", -1, "Static", 0x50000003L, 12, 7, 18, 20
+    CONTROL "Delete Player", 1003, "Button", 0x50010000L, 145, 139, 47, 14
+END
+
+104 DIALOG 0, 0, 257, 90
+STYLE 0x90c800c0L
+CAPTION "Lemmings for Windows 95 - Registration "
+FONT 8, "MS Sans Serif"
+BEGIN
+    CONTROL "", 1005, "Edit", 0x50810080L, 54, 41, 182, 13
+    CONTROL "OK", 1, "Button", 0x50010000L, 60, 69, 50, 14
+    CONTROL "Cancel", 2, "Button", 0x50010000L, 147, 69, 50, 14
+    CONTROL "Name :", -1, "Static", 0x50020002L, 20, 42, 30, 12
+    CONTROL "Please Regsiter your Copy of Lemmings for Windows 95. To register please type in your name", -1, "Static", 0x50020001L, 7, 10, 240, 22
+END
+
+CROSSCURSOR CURSOR "res/crosscursor.cur"
+
+BOXCURSOR CURSOR "res/boxcursor.cur"
+
+SMABOXCURSOR CURSOR "res/smaboxcursor.cur"
+
+SMACROSSCURSOR CURSOR "res/smacrosscursor.cur"
+
+LEFTBOXCURSOR CURSOR "res/leftboxcursor.cur"
+
+RIGHTBOXCURSOR CURSOR "res/rightboxcursor.cur"
+
+LEFTSMABOXCURSOR CURSOR "res/leftsmaboxcursor.cur"
+
+RIGHTSMABOXCURSOR CURSOR "res/rightsmaboxcursor.cur"
+
+LEMMINGS ICON "res/lemmings.ico"
+
+LEMMINGS MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&Give Up", 278
+        MENUITEM "&Restart This Level", 280
+        MENUITEM "&Action Replay This Level", 40005
+        MENUITEM "&Choose Level", 275
+        MENUITEM "Cheat This Level", 40008
+        MENUITEM SEPARATOR
+        MENUITEM "Set Options...", 375
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit", 277
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Contents", 314
+        MENUITEM "&Search for Help On...", 316
+        MENUITEM "&How to Use Help", 318
+        MENUITEM SEPARATOR
+        MENUITEM "&About Lemmings...", 320
+    END
+END
+
+FRONTEND MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&Next Level", 279
+        MENUITEM "&Choose Level", 275
+        MENUITEM SEPARATOR
+        MENUITEM "Select Player...", 40007
+        MENUITEM "Set Options...", 375
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit", 277
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Contents", 314
+        MENUITEM "&Search for Help On...", 316
+        MENUITEM "&How to Use Help", 318
+        MENUITEM SEPARATOR
+        MENUITEM "&About Lemmings...", 320
+    END
+END
+
+ENDSCREEN MENU
+BEGIN
+    POPUP "&File"
+    BEGIN
+        MENUITEM "&Next Level", 279
+        MENUITEM "&Choose Level", 275
+        MENUITEM "Action Replay of Last Level", 391
+        MENUITEM SEPARATOR
+        MENUITEM "Select Player...", 40007
+        MENUITEM "Set Options...", 375
+        MENUITEM SEPARATOR
+        MENUITEM "E&xit", 277
+    END
+    POPUP "&Help"
+    BEGIN
+        MENUITEM "&Contents", 314
+        MENUITEM "&Search for Help On...", 316
+        MENUITEM "&How to Use Help", 318
+        MENUITEM SEPARATOR
+        MENUITEM "&About Lemmings...", 320
+    END
+END
+
+LEMMINGS ACCELERATORS
+BEGIN
+    43, 363, ASCII, NOINVERT
+    45, 364, ASCII, NOINVERT
+    47, 320, ASCII, NOINVERT, ALT
+    48, 393, ASCII, NOINVERT
+    49, 350, ASCII, NOINVERT
+    50, 351, ASCII, NOINVERT
+    51, 352, ASCII, NOINVERT
+    52, 353, ASCII, NOINVERT
+    53, 354, ASCII, NOINVERT
+    54, 355, ASCII, NOINVERT
+    55, 356, ASCII, NOINVERT
+    56, 357, ASCII, NOINVERT
+    57, 392, ASCII, NOINVERT
+    61, 363, ASCII, NOINVERT
+    63, 320, ASCII, NOINVERT, ALT
+    78, 279, ASCII, NOINVERT, ALT
+    82, 271, ASCII, NOINVERT, ALT
+    83, 275, ASCII, NOINVERT, ALT
+    27, 390, VIRTKEY, NOINVERT
+    112, 314, VIRTKEY, NOINVERT
+    112, 367, VIRTKEY, NOINVERT, ALT
+    113, 369, VIRTKEY, NOINVERT, ALT
+    114, 371, VIRTKEY, NOINVERT, ALT
+    101, 40006, VIRTKEY, NOINVERT
+    110, 279, ASCII, NOINVERT, ALT
+    112, 392, ASCII, NOINVERT
+    114, 271, ASCII, NOINVERT, ALT
+    115, 275, ASCII, NOINVERT, ALT
+END
+
+DLGINCLUDE RCDATA
+BEGIN
+    "GENERIC.H\0"
+END
+
+1 VERSIONINFO
+FILEVERSION 0,9,1,0
+PRODUCTVERSION 0,9,1,0
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0xbL
+FILEOS 0x4L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080904e4"
+        BEGIN
+            VALUE "CompanyName", "Visual Sciences Ltd.\0"
+            VALUE "FileDescription", "Lemmings(TM)\0"
+            VALUE "FileVersion", "0.9.1.0\0"
+            VALUE "InternalName", "Lemmings\0"
+            VALUE "LegalCopyright", "Copyright \251 Psygnosis Ltd. 1990-1995\0"
+            VALUE "LegalTrademarks", "Lemmings\256 is a registered trademark of Psygnosis Ltd. Windows(TM) is a trademark of Microsoft Corporation.\0"
+            VALUE "OriginalFilename", ""
+            VALUE "ProductName", "Lemmings\0"
+            VALUE "ProductVersion", "0.9.0.4\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x809, 0x4e4
+    END
+END
+
+STRINGTABLE
+BEGIN
+    272, "Lemmings: Welcome %s"
+    274, "Lemmings: PAUSED"
+    276, "Lemmings: [%s] %s"
+    277, "Lemmings : [%s]"
+    286, "Give up the current level..."
+    287, "Select a new level..."
+    288, "Exit Lemmings..."
+    289, "Abandon this level"
+    290, "Move on to next level"
+    291, "Help contents"
+    292, "Search Help"
+    293, "Help on Help"
+    294, "About Lemmings..."
+    295, "Choose Climber icon"
+    296, "Choose Floater icon"
+    297, "Choose Exploder icon"
+    298, "Choose Blocker icon"
+    299, "Choose Builder icon"
+    300, "Choose Basher icon"
+    301, "Choose Miner icon"
+    302, "Choose Digger icon"
+    303, "Pause the game"
+    304, "Kill all Lemmings and end level"
+    305, "Enter fast forward mode"
+    306, "Return to regular speed"
+    307, "Set normal view"
+    308, "Set double sized view"
+    309, "Set quadruple sized view"
+    310, "Increase Lemmings release rate"
+    311, "Decrease Lemmings release rate"
+    312, "Lemmings release rate"
+    315, "Next level"
+    317, "Select level"
+    319, "Replay level"
+    321, "Play next level"
+    322, "Select a new level"
+    323, "Replay this level"
+    324, "Action"
+    325, "Replay"
+    326, "Next"
+    327, "Level"
+    328, "Choose"
+    8197, "All lemmings accounted for"
+    8198, "You needed %d%%"
+    8199, "You rescued %d%%"
+    8200, "Your time is up!"
+    368, "Welcome to Lemmings"
+    370, "Time: %02d:%02d"
+    372, "Save %02d of %02d lemmings"
+    373, "Home: %03d"
+    374, "Out: %03d"
+    32000, "Lemmings is unable to change resolution, while the game is playing. The level needs to be restarted. Do you want to restart this level so the resolution change can take affect?"
+    32001, "The options you have chosen will make the viewing window bigger than the screen. Are you sure you want these options?"
+    32512, "ERROR"
+    32513, "Lemmings was unable to activate help system"
+    32514, "Lemmings failed to load cross cursor"
+    32515, "Lemmings failed to load box cursor"
+    32516, "Lemmings failed to load arrow cursor"
+    32517, "MIDI ERROR"
+    32518, "Ensure MIDI device is connected and setup in the Control Panel\n"
+    32519, "Lemmings was unable to open MIDI music device\n"
+    32520, "Lemmings was unable to play on the MIDI music device\n"
+    32521, "Lemmings was unable to stop the MIDI music device\n"
+    32522, "Lemmings was unable to seek the MIDI music device\n"
+    32523, "Lemmings was unable get status of the MIDI music device\n"
+    32524, "Unable to register base class"
+    32525, "Unable to create window"
+    32526, "Congratulations!"
+    32527, "You truly are an Excellent"
+    32256, "16 Million"
+    32257, "65 Thousand"
+    32258, "32 Thousand"
+    32259, "256"
+    32260, "Warning you have a %s colour display\n Lemmings requires a 256 colour display"
+    32261, "WARNING"
+    32528, "Lemmings Player."
+    32529, "The Lemmings saga continues at a"
+    32530, "later date, watch this space."
+END

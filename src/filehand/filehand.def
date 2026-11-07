@@ -1,0 +1,6 @@
+LIBRARY FILEHAND.DLL
+EXPORTS
+  _FILE_Close@4 = FILE_Close@4 @1
+  _FILE_Length@4 = FILE_Length@4 @2
+  _FILE_Read@12 = FILE_Read@12 @3
+  _FILE_ReadOpen@4 = FILE_ReadOpen@4 @4

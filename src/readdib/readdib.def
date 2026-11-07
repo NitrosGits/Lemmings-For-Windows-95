@@ -1,0 +1,16 @@
+LIBRARY readdib.DLL
+EXPORTS
+  _Dib2HBITMAP@8 = Dib2HBITMAP@8 @1
+  _DoubleDib@4 = DoubleDib@4 @2
+  _FlipXDib2HBITMAP@8 = FlipXDib2HBITMAP@8 @3
+  _FlipXDib@4 = FlipXDib@4 @4
+  _FreeDib@4 = FreeDib@4 @5
+  _GetDibBits@4 = GetDibBits@4 @6
+  _GetDibBitsAddr@4 = GetDibBitsAddr@4 @7
+  _GetDibHeight@4 = GetDibHeight@4 @8
+  _GetDibInfoHeaderSize@4 = GetDibInfoHeaderSize@4 @9
+  _GetDibPlanes@4 = GetDibPlanes@4 @10
+  _GetDibWidth@4 = GetDibWidth@4 @11
+  _GetPalette@4 = GetPalette@4 @12
+  _LoadDIBitMap@8 = LoadDIBitMap@8 @13
+  _ReadDib@4 = ReadDib@4 @14

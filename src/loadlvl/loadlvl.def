@@ -1,0 +1,4 @@
+LIBRARY LOADLVL.DLL
+EXPORTS
+  _LevelFree@4 = LevelFree@4 @1
+  _LoadLevel@16 = LoadLevel@16 @2

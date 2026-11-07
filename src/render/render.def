@@ -1,0 +1,18 @@
+LIBRARY RENDER.DLL
+EXPORTS
+  _FreeDisplayList@4 = FreeDisplayList@4 @1
+  _FreeSpriteList@4 = FreeSpriteList@4 @2
+  _GetBMP4Canvas@8 = GetBMP4Canvas@8 @3
+  _GetDIB4Canvas@24 = GetDIB4Canvas@24 @4
+  _GetSurfaceModulo@8 = GetSurfaceModulo@8 @5
+  _GetSurfacePointer@8 = GetSurfacePointer@8 @6
+  _NewDisplayList@4 = NewDisplayList@4 @7
+  _NewSpriteList@4 = NewSpriteList@4 @8
+  _Renderer_Initialise@4 = Renderer_Initialise@4 @9
+  _Renderer_LoadCanvas_BitMap@16 = Renderer_LoadCanvas_BitMap@16 @10
+  _Renderer_Quit@4 = Renderer_Quit@4 @11
+  _Renderer_Render@40 = Renderer_Render@40 @12
+  _Renderer_RenderList@8 = Renderer_RenderList@8 @13
+  _Renderer_Revealed@24 = Renderer_Revealed@24 @14
+  _Renderer_SpriteList@8 = Renderer_SpriteList@8 @15
+  _SetClipRegion@24 = SetClipRegion@24 @16
