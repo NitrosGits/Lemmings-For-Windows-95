@@ -28,11 +28,11 @@ extern int pad_addobjecttype0, pad_addobjecttype1, pad_addobjecttype2, pad_addob
 /* 0x10004760: a kind of object, its frames side by side in a slot */
 int Map::AddObjectType(WORD renderer, WORD slot, int x, int y, int w, int h, int count)
 {
-    SPRITELIST *list;
     int i;
+    int fx;
     int n = numTypes;
     OBJTYPE *t = &types[n];
-    int fx;
+    SPRITELIST *list;
     int current;
 
     list = NewSpriteList(count);
