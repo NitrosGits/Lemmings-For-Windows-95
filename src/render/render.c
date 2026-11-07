@@ -149,6 +149,25 @@ extern int pad_renderrender0, pad_renderrender1, pad_renderrender2, pad_renderre
 void WINAPI Renderer_Render(WORD renderer, HDC dc, WORD slot, int left, int top, int right,
                             int bottom, int width, int height, int mode)
 {
+    /* Numbering padding for VC++ 2.2 register colouring (docs/C2_REGALLOC.md): 17 unused locals here,
+       17 fewer pad_newcanvas externs above NewCanvas keep later functions' numbering unchanged. */
+    int dm0;
+    int dm1;
+    int dm2;
+    int dm3;
+    int dm4;
+    int dm5;
+    int dm6;
+    int dm7;
+    int dm8;
+    int dm9;
+    int dm10;
+    int dm11;
+    int dm12;
+    int dm13;
+    int dm14;
+    int dm15;
+    int dm16;
     DWORD end;
     CANVAS *c;
     int dy;
@@ -936,7 +955,7 @@ void WINAPI Renderer_Quit(WORD renderer)
 }
 
 /* Symbol padding (see docs/DECOMP.md): the original had more declarations here. */
-extern int pad_newcanvas0, pad_newcanvas1, pad_newcanvas2, pad_newcanvas3, pad_newcanvas4, pad_newcanvas5, pad_newcanvas6, pad_newcanvas7, pad_newcanvas8, pad_newcanvas9, pad_newcanvas10, pad_newcanvas11, pad_newcanvas12, pad_newcanvas13, pad_newcanvas14, pad_newcanvas15, pad_newcanvas16, pad_newcanvas17, pad_newcanvas18, pad_newcanvas19, pad_newcanvas20, pad_newcanvas21, pad_newcanvas22, pad_newcanvas23, pad_newcanvas24, pad_newcanvas25, pad_newcanvas26, pad_newcanvas27, pad_newcanvas28;
+extern int pad_newcanvas0, pad_newcanvas1, pad_newcanvas2, pad_newcanvas3, pad_newcanvas4, pad_newcanvas5, pad_newcanvas6, pad_newcanvas7, pad_newcanvas8, pad_newcanvas9, pad_newcanvas10, pad_newcanvas11;
 
 /* 0x10003140: a free canvas (0: none) */
 static WORD NewCanvas(int owner)
