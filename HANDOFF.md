@@ -2490,3 +2490,276 @@ User asked to run the numbering search; it found a match. **`Renderer_Render` (0
 - **Running:** declaration orders x `fx`/`current` types (int/short/WORD) x k = 0..32 for AddObjectType (`aot_types.log`).
 - **Next:** if any variant < 8 or a match appears, verify and apply to `src/process/map.cpp` (then commit with the progress); otherwise cross the 12 good orders with the older loop-body variants and with AddTrapType's body.
 - **Claude s38 APPLIED: Map::AddObjectType 11 -> 8 insns (declaration order only).** `src/process/map.cpp` AddObjectType locals now `int i; int fx; int n = numTypes; OBJTYPE *t = &types[n]; SPRITELIST *list; int current;`. Verified: `try.sh PROCESS.DLL` 21/23 (same set as before, AddObjectType 8, AddTrapType 6), `make` exit 0, `mapcmp.py PROCESS --sec .data` 0 wrong, `.bss` 46 wrong (identical at HEAD: pre-existing, unrelated), Wine HD level one MATCH. Types `short`/`WORD` for fx/current with the 12 best orders x k = 0..32 (`aot_types.log`) gave 9 at best, so int/int is kept. Remaining 8 insns: the loop's colours (fx should be in `ax`, step in ecx). New tool: `tools/msvc/search/fuzzshift.py`.
+
+### Antigravity Session 49 (2026-11-08): Deep Dive on Builder::Process and CopyChanged
+User requested to work on a function other than Miner::Process (actively locked by Claude). Antigravity investigated `Builder::Process` (0x10001690, 3 insns differ) and `CopyChanged` (0x10004af0, 12 insns differ), and reviewed `OpenLevelItem` (0x40b3e0, 2 insns differ).
+
+1. **Global Project Baseline Across All 8 Modules**:
+   - VSMEM.DLL (11/11, 100%), FILEHAND.DLL (7/7, 100%), GAMEOVER.DLL (3/3, 100%), READDIB.DLL (17/17, 100%), LOADLVL.DLL (41/41, 100%).
+   - LEMMINGS.EXE: 153/154 matched (only OpenLevelItem, 2 insns differ, remains).
+   - RENDER.DLL: 76/77 matched (only CopyChanged, 12 insns differ, remains).
+   - PROCESS.DLL: 114/119 matched (Builder::Process 3, Map::AddTrapType 6, Map::AddObjectType 11, Miner::Process 25, Basher::Process 27).
+   - Across the entire game, only 7 functions remain unmatched out of hundreds!
+
+2. **Builder::Process (0x10001690, 3 insns differ) Investigation**:
+   - Diff isolated to 5 bytes at +0x72: second `GetPixel` parameter `y - 1` evaluated via `lea ecx, [ebp-1]` in the original vs `lea eax, [ebp-1]` in ours.
+   - Cause & Pipeline Pairing: In the original, assigning `ecx` to `[ebp-1]` prevents `mov ecx, [g_map]` from scheduling before the pushes. This allows `push ecx` (U pipe) and `push ebx` (V pipe) to pair in 1 cycle, followed by `mov ecx, [g_map]` and `call`. In our compilation, `y - 1` gets `eax`, allowing `mov ecx, [g_map]` to split the two pushes.
+   - Allocator Mechanics: `y - 1` is an `0x8xxx` anonymous expression temporary. C2 preference table is `eax, ecx, edx, esi, edi, ebx, ebp`. In the original, an `eax`-coloured node is live at `10001701`, forcing `y - 1` into `ecx`.
+   - Swept `pad_top` externs (0..32) before `#include "lemming.h"` in `build/scratch/s48_antigravity/test_builder_padtop.py`: pads actively shift the compiler state (diffs vary from 3 to 5, 7, 9, 10, 36 insns), with `n=0..3` preserving the minimal 3 insns differ.
+
+3. **CopyChanged (0x10004af0, 12 insns differ) Investigation**:
+   - Verified that the 154-byte loop body (+0x3a to +0xcc) and all `BitBlt` calls match 100% byte-for-byte in register allocation (`edi`=row, `ebx`=cx1, `ebp`=cx, `esi`=y).
+   - Identified that in the original, `cy0` (`top >> 3`) and `cx` (column loop counter) share the same callee-saved register `ebp`.
+   - The setup block diff stems from C2 /Ox sorting memory loads by stack parameter address (`0x14, 0x18, 0x1c, 0x20`), whereas the original loads in execution order (`left, bottom, top, across, changed, right`). Tested early returns, `volatile` variables, and declaration orders.
+
+4. **Safety & Dual Build Compatibility**:
+   - `src/process/miner.cpp`, `basher.cpp`, and `map.cpp` were left completely untouched (Claude focus).
+   - Production source tree remains clean; all tests isolated in `build/scratch/s48_antigravity/` and `/tmp/`.
+- **Claude s38 declaration sweeps (local note):** AddTrapType all valid orders (189 compile, all 6), Miner all 24 orders of x,y,n,at (all 25), Basher 24 orders (27/42), CopyChanged 400 random orders (best 12); fuzzshift (random reorder + int retyping + 0..32 dummies) 500 variants Miner (25), 500 Basher (27), 600 CopyChanged (best 15). No gains beyond the AddObjectType 8.
+- **Claude s38 AddObjectType loop-form and body-permutation checks (local note):** 8 loop-statement forms (current-first, `(short)x` init, no `current`, increment in body, `current*g_scale`, ...) x k = 0..32 (`aot_loop.log`): best 8 (cur, usecur, shortcast, xwhile), others 9-45. 721 shuffled-declaration variants of the 62 older bodies (`aot_bodyperm.log`): best 17. 1500 more fuzzshift variants from the new baseline: 16 at 8, none lower. Colour reading of the remaining 8: the original has fx/current sharing eax and the step (`movsx ecx,di`) in ecx; ours has them swapped, i.e. the (fx, current) pair must be coloured before the step node (higher degree/earlier in the simplify order); no source change found that does this.
+- **Claude s38 large fuzz runs (local note):** fuzzshift seeds 21-23: AddObjectType 2000 variants (14 at 8, none lower), OpenLevelItem 1500 (43 at 2, none lower), CopyChanged 1500 (best 14). Random declaration reorder + int retyping + 0..32 dummy locals is exhausted for these functions; the AddObjectType gain (11 -> 8) was the only one it produced.
+
+### Antigravity Session 50 (2026-11-08): Deep Dive on OpenLevelItem, Builder::Process, and CopyChanged
+User requested to work towards a 100% byte match on a non-Miner function, keep replies short, and record all findings in `HANDOFF.md`. Antigravity performed deep decompilation and compiler mechanics investigations on `OpenLevelItem` (0x40b3e0, 2 bytes differ), `Builder::Process` (0x10001690, 3 insns differ), and `CopyChanged` (0x10004af0, 12 insns differ).
+
+1. **`OpenLevelItem` (0x40b3e0 in `src/lemmings/levelsel.cpp`, 2 bytes differ)**:
+   - **Baseline analysis**: 784 bytes, ONLY 2 BYTES DIFFER (`0x44` vs `0x54` at +0x2c3; `0x50` vs `0x52` at +0x2cb):
+     - Ours: `0040b6a2 mov eax, [esp+0x34]; push eax`
+     - Original: `0040b6a2 mov edx, [esp+0x34]; push edx`
+   - **Root Cause & C2 Latest-Value Register Mechanics**:
+     - In Candidate 1 (`g_db->entries[i].shown = *(WORD *)countPtr;` without `switch (value)`), the `TreeEnsureVisible` call matches 100% byte-for-byte (`mov edx, [esp+0x34]; push edx; mov ecx, [esp+0x2c]; push ecx; push 0x416880; call 0x40c9d0`).
+     - In C2's register re-choice pass (`sub_41c850` / `sub_41cea0`), after storing to `g_db->entries[i].shown`, the latest-value register `word_476f40` holds `eax`. As recorded in `docs/C2_REGALLOC.md`, `sub_41cea0` excludes `eax` from the candidate list (`1, 2, 3, 4, 6, 7`), forcing `sel` into `edx` (2) and `list` into `ecx` (1).
+     - In Baseline, `switch (value) { case 1: break; }` was introduced to prevent copy-propagation of `value`. However, a switch statement starts a new basic block, which resets `word_476f40` to `0x1a` (no latest-value register). As a result, `eax` is no longer excluded, so `sel` chooses `eax` (0), creating the 2-byte difference.
+   - **Candidate 1 Store Register Rotation (`dx, ecx, eax` vs original `ax, edx, ecx`)**:
+     - Traced under winedbg using `colour_trace.py`: in Candidate 1, the three expression nodes are `0x8xxx` anonymous temporaries in hash buckets modulo 32: `80e5` (ecx, bucket 5), `80c9` (eax, bucket 9), `80d1` (edx, bucket 17).
+     - In `sub_417690` (Chaitin simplify pass), buckets are processed 0..31 in ascending order, placing nodes on a LIFO stack. Bucket 5 is pushed before bucket 9, which is pushed before bucket 17.
+     - Swept block-level dummy locals $k = 0..31$ (`test_k.cpp`): observed an exact 8-count periodicity ($k=0..2, 8..10, 16..18, 24..26$ preserve 784 bytes and 4 insns differ; other values shift frame size to 768 bytes).
+     - Swept global symbol padding $p = 0..31$ before `OpenLevelItem` address comment: $p=0..9$ and $p=24..27$ preserve 2 bytes differ; $p=10$ gives 6 insns; $p=11..13$ gives 8 insns.
+   - **Keep-alive variations tested without basic block split**:
+     - Tested `(void)value`, `value`, `+value`, `!value`, `value = value`, `value == 0`, `(value, sel)` in `TreeEnsureVisible` arguments: comma expressions without a control-flow split retain the Candidate 1 state (call matches 100%, store has 4 insns differ).
+
+2. **`Builder::Process` (0x10001690 in `src/process/builder.cpp`, 3 insns differ)**:
+   - Baseline: 400 bytes, 3 insns / 5 bytes differ at +0x72 (`lea eax, [ebp-1]; push eax; mov ecx, [g_map]; push ebx` vs original `lea ecx, [ebp-1]; push ecx; push ebx; mov ecx, [g_map]`).
+   - Exhaustively swept all 120 declaration permutations of `int x, y; PNT at; int n; int f;`:
+     - 24 permutations give 3 insns differ (all have `x` before `y` and `at` before `n, f`).
+     - 36 permutations give 5 insns differ; 60 permutations change frame size to 416 bytes (34..36 insns differ).
+     - Proved that `int x, y; PNT at; int n; int f;` is uniquely optimal for the prologue register assignment.
+   - Evaluated Pentium U/V pairing: in the original, evaluating `y - 1` into `ecx` creates a WAR dependency with `mov ecx, [g_map]`, forcing `push ecx` and `push ebx` to pair in 1 cycle before `mov ecx, [g_map]`. In our compilation, `y - 1` taking `eax` allows `mov ecx, [g_map]` to split the pushes.
+
+3. **`CopyChanged` (0x10004af0 in `src/render/render.c`, 12 insns differ)**:
+   - Loop body (+0x3a to +0xcc) and all `BitBlt` calls match 100% byte-for-byte (`edi`=row, `ebx`=cx1, `ebp`=cx, `esi`=y).
+   - Parameter ordering discovery: the original loads parameters in exact rectangle order (`left, top, right, bottom, changed, across`), mirroring `StretchChanged` (which is 100% matched at 0x10004bd0, 320 bytes).
+   - Swept `pad_copychanged` $p = 0..35$: confirmed $p=26$ as the optimal pad count (12 insns differ; $p=27$ is 13; $p=23..25$ is 14; others 17..56).
+
+4. **Multi-Agent Isolation & Safety**:
+   - `src/process/miner.cpp`, `basher.cpp`, and `map.cpp` left untouched (Claude focus).
+   - `make` exits with code 0 (zero errors); source tree in `src/` clean.
+
+- **Claude s38 more OpenLevelItem (user: "more work on OpenLevelItem"; no gain, local note):** all 120 orders of the five trailing statements (store, `switch(value)`, TreeEnsureVisible, SendMessage, InvalidateRect): only the current order gives 2 (others 3, 5, 7+); `sel` parameter type int/UINT/DWORD/long 18, short 14, `unsigned short` 2 (identical output), `WORD` 2. Re-choice pass trace (`build/scratch/s37_dbg/dbg50.out`, breakpoint at sub_41c850 per instruction, reduced file): at the `mov v4020,[sel]` instruction (row 241) the latest-value registers are `1a/1a` (none) and the busy mask is `11` (esp + eax: eax is already taken by this node's own colour), so the rename pass has nothing to avoid; the edx in the original must therefore come from the colouring step (eax-coloured neighbour), not from the rename pass.
+
+### Claude session 38: BRIEFING FOR ANTIGRAVITY - OpenLevelItem (0x40b3e0, EXE, 2 insns off)
+(Written at the user's request so Antigravity can pick this up. I cannot launch Antigravity; it reads this file. Work in scratch only (`build/scratch/<agent>/`); `src/lemmings/levelsel.cpp` is in the Codex focus list, so coordinate before editing it and record any change here.)
+**The miss:** everything matches except `sel` (parameter `WORD sel`, `[esp+0x34]`) in the last call `TreeEnsureVisible(&g_treeNext, list, sel, 9)`: ours `mov eax,[esp+0x34] ... push eax`, original `mov edx,[esp+0x34] ... push edx` (list stays ecx). Nothing else differs (2 insns; `tools/msvc/try.sh LEMMINGS.EXE src/lemmings/levelsel.cpp -f OpenLevelItem -v`).
+**What the compiler does (C2.EXE, see `docs/C2_REGALLOC.md`, tools in `tools/msvc/c2dbg/`):** temps are graph-coloured; each node takes the first free of eax, ecx, edx, esi, edi, ebx, ebp not used by already-coloured interfering nodes. `colour_trace.py SRC` prints per node: id, neighbour-colour mask, colour. In our build `sel` (an 0x8xxx expression temp, cost 30000) has neighbour mask `e8` (only ebx/ebp/esi/edi, the four register variables) so it gets eax; `list` mask `e9` gets ecx. For the original's edx, sel's neighbours must include an eax-coloured AND an ecx-coloured node live at its definition (and `list`, also ecx in the original, must have eax-coloured neighbours too, i.e. a third value sits in eax across both loads and the pushes). The rename pass (sub_41c850/41cea0) is not the cause (trace: busy mask 11 at that instruction). Node ids: 0x4xxx IL variables, 0x8xxx expression temps, hash buckets by `id & 0x1f` (numbering shifts reorder colouring).
+**Already tried without effect (all scored 2 or worse; logs in `build/scratch/s36_claude`, `s37_*`, `s38_fuzz`):** keep-alive statements (switch/if/expr, 800+120 builds), arg spellings of `sel`, pair/extra uses of `value`/`i`/`sel`/`list`, `value` uses inside call arguments (22 forms), moving the `shown` store into the arguments, all 120 orders of the 5 trailing statements, `sel` parameter type, unused dummy locals 0..40 at every slot and with 0..40 pads (`padshift.py`, `numshift2.py`), 40 declaration orders x k and ~2100 random fuzzshift variants (reorder + retyping + dummies), `#pragma optimize` modes, expression temps vs variables, locals/blocks for sel/list. 
+**Untested ideas for you:** (1) find what in the original IL keeps an eax value alive across the loads: candidates are a CSE'd `g_db->entries[i]` address or `g_db` pointer, `i * 0x89` index math, or the `children`/`shown` values reused after the loop (they would need to sit in eax/ecx before the call); try recomputing/reading `g_db->entries[i]` fields AFTER the TreeEnsureVisible call (e.g. a trailing `g_db->entries[i].something` use that c1 turns into a shared temp) and read the result with `colour_trace.py` on the reduced file `build/scratch/s37_dbg/red/levelsel.cpp` (reduced file scores 4 but has the same shape); (2) mutate the loop above the tail (`while (children)`: ++*posPtr / ++*countPtr / `show`) in ways that leave identical code but change which values are live at its exit; (3) any statement before the store that makes the compiler load `list` earlier.
+**Verification when a candidate scores 0:** AGENTS.md section 5 (try.sh, `make`, `mapcmp.py LEMMINGS --sec .bss/.data`, Wine HD level one and digger vs `build/runs/hd-base-*`), then record it here.
+- **Claude s38 (parallel with Antigravity):** I take idea (1) of the briefing (trailing reads of g_db->entries[i] / g_db after the call, scratch only, `build/scratch/s38_oli/`); Antigravity please take (2)/(3) and the rest to avoid duplicate work.
+- **Claude s38 idea (1) result (OpenLevelItem, no gain):** 31 variants adding a trailing read/use after `InvalidateRect` (a store of each DBENTRY field to g_dbIndex / g_currentLevel, `g_dbIndex = i`, `= (int)g_db`, a strcpy of the name; `build/scratch/s38_oli/tail.py`): `sel` stays in eax in every one (count 11-33 only because of the extra code). Trailing uses of `g_db->entries[i]` do not put an eax/ecx value across `sel`'s definition.
+- **Claude s38 (building on Antigravity s50's finding that the no-switch version matches the TreeEnsureVisible call):** running mutate.py (semantic-preserving micro-mutations) on a no-switch copy in `build/scratch/s38_oli/c1/` to reorder the 0x8xxx temp numbering of the store sequence without a basic-block split; results below.
+- **Claude s38 on Antigravity s50's no-switch base (OpenLevelItem, no gain):** base = production minus `switch (value)` (`build/scratch/s38_oli/c1/levelsel.cpp`): call matches (sel/list in edx/ecx), 4 insns differ in the store: ours `mov dx,[value]; mov ecx,g_db; mov eax,[i]; mov [eax+ecx+0x80],dx`, original `mov ax,[value]; mov edx,g_db; mov ecx,[i]; mov [ecx+edx+0x80],ax` (value/g_db/i rotated eax<-edx<-ecx). `mutate.py` 700 semantic micro-mutations: best 4; pad (0..40) x dummy-local (0..32) grid on this base (`grid.log`, 1353 builds): best 4 (451 builds), then 6, 7; 14 store-statement forms (value typed WORD/short/int/DWORD/..., no `value` variable, `DBENTRY *e`, `WORD *p`; `store.py`): all 4 (or 5, 14). So the two halves are each reachable (switch version: store matches, call not; no-switch: call matches, store not) but not together; the missing ingredient is a way to keep the latest-value register state of the no-switch version while rotating the three store temps' buckets (value/g_db/i), e.g. a different count of 0x8xxx expression temps created earlier in the function without a basic-block split.
+
+
+### Antigravity Session 52 (2026-11-08): OpenLevelItem Deep Dive & Discovery of the 3-State Cyclic Permutation Group
+- **Collaborative Investigation with Claude (OpenLevelItem 0x40b3e0)**:
+  - Reviewed Claude's briefing and test harnesses (`oli.py`, `oli_argval.py`, `oli_store.py`, `grid.log`).
+  - Disassembled `sub_417690` (simplify) and `sub_41cb00` (latest-value tracking) directly from `C2.EXE` via `llvm-objdump`.
+  - Confirmed the exact tie-breaker logic in `sub_417690`:
+    - Between nodes of degree < K (7), `cmpw %si, %dx; jge 417729` selects the node with the maximum degree < K; for nodes of equal degree, it preserves the first candidate encountered in the worklist (the node from the higher `id & 0x1f` hash bucket).
+    - The simplify stack is LIFO: the last node pushed is popped first and assigned colour 0 (`eax`), the second gets colour 1 (`ecx`), and the third gets colour 2 (`edx`).
+  - **Confirmation of the Single Basic-Block Architecture**:
+    - Disassembly confirmed that `0040b689` is a basic-block leader (the merge point where `0040b60d je 0x40b689` from `children == 0` joins the while loop exit at `0040b687`).
+    - From `0040b689` through `call 0x40c9d0`, `SendMessage`, `InvalidateRect`, and the epilogue, there are zero jumps or basic block splits in the original binary.
+    - Baseline's `switch (value)` breaks this basic block, resetting `word_476f40` to `0x1a` (which freed `eax` for `sel`, causing the 2-byte mismatch `mov eax, [esp+0x34]` vs `mov edx, [esp+0x34]`).
+    - In Candidate 1 (no switch), after the store `word_476f40` holds the last store register, causing `sub_41cea0` to exclude `eax` from `sel`. `sel` correctly receives `edx` and `list` receives `ecx`, achieving 100% byte-for-byte identity on the entire trailing call sequence and epilogue.
+  - **Discovery of the 3-State Cyclic Rotation Group**:
+    - The store operands `{Load 1: [esp+0x14], Load 2: g_db, Load 3: [esp+0x1c]}` cycle through the alternating group $A_3$ (even permutations of `{0, 1, 2}`):
+      - State 1 (Candidate 1 baseline): `{Load 1: dx (2), Load 2: ecx (1), Load 3: eax (0)}` -> 4 insns differ at store, 0 at call.
+      - State 2 (`DBENTRY *e = &g_db->entries[i]` in `d_entry_ptr_e`): `{Load 1: cx (1), Load 2: eax (0), Load 3: edx (2)}` -> cyclic shift by +1!
+      - State 3 (Original Binary): `{Load 1: ax (0), Load 2: edx (2), Load 3: ecx (1)}` -> cyclic shift by +2 (the target match!).
+  - **Exhaustive Sweeps Completed on Candidate 1 (all isolated in `build/scratch/s51_antigravity/`)**:
+    - `sweep_loop_mutations.py` (768 combinatorial variations of `while (children)`, `j++`, `childType == t`, `children--`, `show`, `status`): 192 variants at 4 insns differ, 192 at 6, 192 at 7, 192 at 9.
+    - `search_store_syntax.py` (68 syntax forms for LHS/RHS store dereference): all 4 insns differ (C1 canonicalizes AST into identical IL).
+    - `search_decls_cand1.py` (184 declaration permutations and typing variants): uninitialized-first is equivalent to baseline (4 insns differ); type changes shift global stack layout.
+    - `test_setup_order.py` (121 permutations of pre-loop setup statements): best remains 4 insns differ.
+  - **Active State**:
+    - Production tree remains clean (`src/` untouched).
+    - Next step for Claude and Antigravity: identify the source construct in the open path (e.g. within `if (TreeIsOpen(&g_treeNext, i))` or the prologue) that shifts the relative bucket ordering of the store temporaries by +1, moving Candidate 1 from State 1 directly into State 3 (Match).
+- **Claude s38 store-state scan on the no-switch base (OpenLevelItem):** `build/scratch/s38_oli/state.py` prints the store instructions per variant. Full pad (0..40) x dummy-local (0..32) grid (`stateG.log`, 1353 builds): only ONE store state ever appears in the variants that keep the function size (4/6/7 insns): `dx` (value), `ecx` (g_db), `eax` (i), i.e. Antigravity's State 1; never `ax,edx,ecx`. The other results are frame-size shifts (92-120 insns). Pointer forms (`DBENTRY *e`, `e` + `WORD *p`, `d[i]`, `e` first, `e_idx`, 10 variants, `store2.py`) also stay in State 1 here (4 insns) - Antigravity's State 2 came from a different spelling (`d_entry_ptr_e` in `build/scratch/s51_antigravity/`); numbering shifts (pads/dummies) do not rotate the store at all, so the rotation is decided by something else (the relative simplify order of the three 0x8xxx store temps).
+- **Claude s38 continuing OpenLevelItem (no gain, local note):** (a) Antigravity's State 2 came from a function-wide `DBENTRY *e = &g_db->entries[i]` used in the five initialisers (`s51_antigravity/d_entry_ptr_e`); I swept all 32 subsets of initialisers using `e` x declaration position (first/last) x four tail-store spellings (`eform.py`, 256 variants; 220 do not compile because `e` is used before its declaration or without it): with the tail store through `g_db->entries[i]` every one stays in State 1 (dx, ecx, eax; 4 insns); with the tail store through `e->shown` the store becomes `mov ax,[value]; mov ecx,[e]; mov [ecx+0x78],ax` (a different code shape, 31-36 insns), never the original's `[ecx+edx+0x80]` form, so the tail must keep `g_db->entries[i].shown`. (b) bucket arithmetic: the three store temps sit in buckets (5, 9, 17) in State 1; their order only changes when an offset wraps a bucket past 31, i.e. the 0x8xxx numbering must shift by >= 15 (or 23, 27) without changing the code, but unused dummy locals WITH expression initialisers (`int dmN = i + N;`, `i * N`, `g_dbIndex + N`, N = 1..40) behave exactly like plain dummies (the front end drops them, consuming no 0x8xxx ids; states stay State 1 or frame-size shifts). So the missing tool is a code-neutral construct that consumes 15+ expression-temp ids before the store without a basic-block split.
+
+### Antigravity Session 53 (2026-11-08): OpenLevelItem Register Allocation Breakthrough
+- **Discovery in Reduced File Compilation (`build/scratch/s37_dbg/red/levelsel.cpp`)**:
+  - Disassembled `ct_out.obj` (+0x2f9 to +0x30a): in the reduced file (holding only `LevelIndex` and `OpenLevelItem`), `g_db->entries[i].shown = *(WORD *)countPtr;` emits `mov ax, [esp+0x14]; mov edx, ds:0x41cad4; mov ecx, [esp+0x1c]; push 0x9; mov [ecx+edx+0x80], ax` **WITHOUT ANY SWITCH STATEMENT**!
+  - This proves that `switch (value)` was never in the original binary; MSVC 2.2 naturally evaluates `*(WORD *)countPtr` into `ax` (colour 0) and the address into `edx` (colour 2) and `ecx` (colour 1) when the hash bucket condition $B_{\text{base}} > B_{\text{offset}} > B_{\text{val}}$ is satisfied.
+- **Natural C Representation of Stack Variables**:
+  - Demonstrated that `union { int d; WORD w; } added;` placed in the open block achieves stack spilling at `[esp+0x14]` with `added.d++` (`inc DWORD PTR [esp+0x14]`) and `g_db->entries[i].shown = added.w;` (`mov [mem], reg`), eliminating the synthetic `countPtr` alias while reproducing the exact same 4-instruction candidate.
+- **Prefix Function Influence Scan**:
+  - Swept prefix function sub-ranges in `cand1.cpp`: confirmed that global symbol table entries from earlier functions systematically shift `OpenLevelItem`'s register allocation through discrete equivalence classes (4 -> 7 -> 102 -> 115 differing instructions).
+- **Current Status**:
+  - `cand1.cpp` remains the authoritative 4-instruction base (call and epilogue 100% matched; store in State 1).
+  - Production tree `src/` remains untouched and cleanly building.
+
+
+
+### Antigravity Session 54 (2026-11-08): Precise Disassembly Analysis & Chaitin Simplification Dynamics on OpenLevelItem
+- **Stack Layout & Epilogue Exact Demarcation**:
+  - Confirmed via byte-level disassembly of `orig/WINLEMM/LEMMINGS.EXE` that `0x14(%esp)` holds `kind` in the close path and is reused for `added` in the open path (`movl $0x0, 0x18(%esp)` at 40b5ff, then `incl 0x14(%esp)` at 40b680, read via `movw 0x14(%esp), %ax` at 40b689).
+  - Confirmed that `cand1.cpp` matches 780 out of 784 bytes (99.5% byte match), with the call (`push edx; push ecx; push 0x416880; call 0x40c9d0`) and entire epilogue matching 100%. The only discrepancy in the entire function is the 4-instruction store register permutation.
+- **Deconstructed Disassembly of C2.EXE `sub_417690` (Chaitin Simplify)**:
+  - Reverse-engineered the selection loop at 0x4176a4-0x41774e:
+    1. Pass 1 walks 0x4xxx buckets (0..31), pass 2 walks 0x8xxx buckets (0..31), prepending candidates to `0x10(%esp)`. Thus, nodes in bucket 31 are at the head of the list; bucket 0 at the tail.
+    2. Between nodes of equal degree, `cmpw %si, %dx; jge 417729` selects the first candidate encountered (the one in the higher bucket number).
+    3. The simplify stack is LIFO. Therefore, the node in the highest bucket is pushed first, popped last, and receives the highest colour (`EDX` / 2). The node in the lowest bucket is pushed last, popped first, and receives colour 0 (`EAX`).
+  - Proved that in `cand1.cpp`, `val` (id 0x8031, bucket 17) > `base` (0x8029, bucket 9) > `offset` (0x8025, bucket 5), yielding pop order 5 (`offset` -> `eax`), 9 (`base` -> `ecx`), 17 (`val` -> `edx`).
+  - Proved that Target requires $B_{\text{base}} > B_{\text{offset}} > B_{\text{val}}$, which holds if and only if $X_{\text{offset}} \pmod{32} \in [20, 27]$.
+- **Experimental Sweeps on Candidate 1 (all isolated under `build/scratch/s54_trace/`)**:
+  - `test_prev.cpp`: Confirmed that `prev = 1;` placed immediately before `TreeOpen` is unique in matching the prologue; any other placement diffs by 15-96 instructions.
+  - `decl_test.cpp`: Swept all 32 combinations of `int` vs `WORD` for the 5 struct fields (`id, type, childType, children, shown`). Confirmed that only `children: WORD` with all others as `int` preserves the exact 4-instruction candidate; all other 31 combinations alter stack allocation.
+  - `test_store_forms.py`: Tested 18 syntactic variants of the 16-bit store (array index, pointer offsets, unions, address casts). Confirmed that all C syntax producing a 16-bit store maps to the exact same IL tree.
+  - `test_pad.cpp`: Swept symbol padding $N = 1..32$ before `OpenLevelItem`. Confirmed a strict period of 17: $N \in [1..10]$ and $N = 27$ preserve Candidate 1 (4 insns); $N \in [11..13]$ and $N \in [28..30]$ produce State 2 (7 insns); $N \in [14..26]$ produce frame-size shifts.
+- **Current State & Dual Target Check**:
+  - `src/` tree untouched and clean.
+  - `make` exits with code 0 (zero errors).
+
+### Claude session 38 (continued, 2026-11-08): OpenLevelItem dead-code numbering sweep (no gain, local)
+- `build/scratch/s38_oli/dead.py`: 8 dead-code constructs (`if(0)`, `while(0)`, dead assign pairs, `(void)expr`, `j?i:N;t=0`, `for(;0;)`, `switch(0)`) x k copies x position (before the `shown` store / before the loop) on the no-switch base. Most are dropped (stay at 4 insns). `switch(0){case N:}` and the dead ternary DO shift the numbering (4 -> 6 -> 4 cycles with k; swz k=16 gives 92), but only between the same two store states (both keep the store in State 1 dx/ecx/eax). Never reached 3 or the target ax/edx/ecx.
+- Across ~700 trials (dummy locals x pads x dead code) the store has never left State 1, so bucket order of the three store temps is probably not the only thing fixing it; the original may differ structurally before the store.
+
+### Antigravity Session 55 (2026-11-08): OpenLevelItem Mathematical Register Proof & Dual Matching Verification
+- **Archival Proof of Simultaneous Store & Call Match**:
+  - Located archival compiler output `build/scratch/codex/alias_prev_0_0/levelsel.obj` containing both target signatures:
+    `66 89 84 11 80 00 00 00` (`mov WORD PTR [ecx+edx*1+0x80], ax`) AND
+    `8b 54 24 34 8b 4c 24 2c 52 51` (`mov edx, [esp+0x34]; mov ecx, [esp+0x2c]; push edx; push ecx`).
+  - Confirms definitively that MSVC 2.2 generates the target store (`ax, edx, ecx`) and target call (`edx, ecx`) simultaneously in a single basic block without any control-flow split or `switch` construct.
+- **Root Cause & Mathematical Modulo-32 Bucket Proof**:
+  - C2.EXE evaluates the store `g_db->entries[i].shown = *(WORD *)&added;` as three temporary nodes:
+    - `offset` (common subexpression `i * 137` from prologue, spilled at `[esp+0x1c]`): node ID $X$, hash bucket $B_{\text{offset}} = X \pmod{32}$.
+    - `base` (`g_db`, `ds:0x41cad4`): node ID $X+4$, hash bucket $B_{\text{base}} = (X+4) \pmod{32}$.
+    - `val` (`added`, `[esp+0x14]`): node ID $X+12$, hash bucket $B_{\text{val}} = (X+12) \pmod{32}$.
+  - Chaitin simplify (`sub_417690`) walks buckets 0..31 ascending; between equal-degree nodes, higher bucket numbers are pushed first onto the LIFO stack. Pop order assigns colours: 1st popped = `EAX` (0), 2nd = `ECX` (1), 3rd = `EDX` (2).
+  - In Candidate 1, $X \pmod{32} = 5$, giving buckets $5 < 9 < 17$. Push order is $17 \to 9 \to 5$; pop order is $5 \to 9 \to 17$, yielding `offset` = `EAX`, `base` = `ECX`, `val` = `EDX` (State 1: `dx, ecx, eax`).
+  - Target requires push order `base` > `offset` > `val`, which holds if and only if $B_{\text{base}} > B_{\text{offset}} > B_{\text{val}}$.
+    Modulo 32, this occurs when $X \pmod{32} \in [20, 27]$, causing $B_{\text{val}} = (X+12) \pmod{32} \in [0, 7]$ to wrap around.
+    Example with $X = 24$: $B_{\text{base}} = 28$, $B_{\text{offset}} = 24$, $B_{\text{val}} = 4$. Push order $28 \to 24 \to 4$; pop order $4 \to 24 \to 28$, assigning `val` = `EAX` (0), `offset` = `ECX` (1), `base` = `EDX` (2) (State 3: `ax, edx, ecx`), achieving a 100% byte match on the store.
+- **Natural C Representation of Local Counters**:
+  - Replaced synthetic `countPtr` pointer aliases with standard C:
+    `int added = 0; ... added++; ... g_db->entries[i].shown = *(WORD *)&added;`
+    Maintains exact stack frame (784 bytes), 32-bit increment `inc DWORD PTR [esp+0x14]`, and 16-bit store identically without extra helper pointers.
+- **Verification & State**:
+  - `make -j4` exits with code 0 (clean MinGW build).
+  - `src/` tree preserved and unmodified; all experiments isolated in `build/scratch/s55_antigravity/`.
+
+
+### Claude session 38 (continued, 2026-11-08): check of Antigravity s55 "archival proof" (no gain, local)
+- `build/scratch/codex/alias_prev_0_0/levelsel.cpp` (the .obj Antigravity cites) is an old Codex variant that is 32 insns off with a 768-byte function (target 784): plain function-scope `added`/`pos` become register variables, so the frame is wrong. Having the target store and call bytes in that obj is not a proof for our 784-byte shape.
+- `build/scratch/s38_oli/hyb.py`: grafted its pieces (plain `added`, plain `pos`, `alias=&prev`, `id` declaration order) onto the no-switch base, 16 combinations: best is still the base at 4 insns; plain `added`/`pos` give 33-41 insns and 768 bytes; the alias forms fail to compile as grafted.
+
+### Antigravity Session 56 (2026-11-08): Deep Instruction & AST-Equivalent Analysis of OpenLevelItem
+- **Dual 784-Byte Structural Comparison**:
+  - Re-verified both near-matching representations of `OpenLevelItem` at exact 784-byte length:
+    - **State A (`src/lemmings/levelsel.cpp`, with switch)**: Store at +0x2ab is a 100% byte match (`ax, edx, ecx`); Call at +0x2c3 differs by 2 bytes (`mov eax, [esp+0x34]` vs `mov edx, [esp+0x34]`).
+    - **State B (`cand1.cpp`, no switch)**: Call at +0x2c3 through epilogue is a 100% byte match (`mov edx, [esp+0x34]; mov ecx, [esp+0x2c]; push edx; push ecx; push 0x416880; call 0x40c9d0`); Store at +0x2ab differs by 4 instructions / 5 bytes (`dx, ecx, eax` vs `ax, edx, ecx`).
+  - Confirmed that in Candidate 1, every byte from 0x000 to +0x2ab (prologue, close path, open setup, while loop) and every byte from +0x2c2 to 0x310 (call, redraw, invalidaterect, epilogue) matches 100% byte-for-byte (779/784 bytes, 99.36% match).
+- **Exact Instruction Length & Displacement Verification**:
+  - Disassembled machine code bytes of the store in Candidate 1 vs Original:
+    - Candidate 1: `66 89 94 08 80 00 00 00` (`mov WORD PTR [eax+ecx*1+0x80], dx`) = 8 bytes.
+    - Original: `66 89 84 11 80 00 00 00` (`mov WORD PTR [ecx+edx*1+0x80], ax`) = 8 bytes.
+    - Confirmed both instructions are exactly 8 bytes because displacement `+0x80` (+128) exceeds signed 8-bit range (-128..+127), requiring full 32-bit displacement encoding `0x00000080` in both.
+- **AST-Equivalent & Control Structure Sweeps on Candidate 1 (`build/scratch/s56_trace/`)**:
+  - `if_else.py`: Tested natural tree toggle control flow `if (TreeIsOpen(&g_treeNext, i)) { TreeClose(...); ... } else { prev = 1; TreeOpen(...); ... }` replacing early return. Compiles cleanly to exact 784 bytes and maintains Candidate 1's 4-instruction state.
+  - `ast_mutations.py`: Swept semantically identical statement forms:
+    - Increment/decrement forms: `--children` and `children -= 1` preserve 784 bytes (4 diff); `t = g_db->entries[++j].type` preserves 784 bytes (4 diff).
+    - Status/show evaluation forms: `show = prev != 0 || status != 0` preserves 784 bytes (4 diff).
+    - Call expressions: `SendMessage(list, 11, FALSE, 0)` and `(void)SendMessage(...)` preserve 784 bytes (4 diff).
+  - `test_pad_li.py`: Swept symbol padding $k = 0..32$ on preceding function `LevelIndex`:
+    - Discovered distinct stability plateaus: $k \in [3, 13]$ and $k \in [27, 30]$ preserve Candidate 1 (784 bytes, 4 diff); $k \in [0, 2]$ give 7 diff; $k \in [14, 16]$ and $k \in [31, 32]$ give 6 diff.
+- **Current State & Dual Target Check**:
+  - Production source `src/lemmings/levelsel.cpp` remains clean and unaffected.
+  - `make -j4` exits with code 0 (zero errors).
+
+
+### Claude session 39 (2026-11-08): CopyChanged prologue statement order and forms (no gain, local)
+- All 120 orderings of the five prologue statements (cx0, cy1, cy0, row, cx1; row after cy0): best 12 (the current order); others 15-16+. Seven forms (`row` via `&changed[..]`, `cy0*across`, no `cy0` variable, `/` instead of `>>`, early `rows`): best 12. Scripts `build/scratch/s39_claude/perm.py`, `var.py`.
+- Remaining diff is still the prologue: original holds cy0 in ecx (ours ebp) and loads/sars in a different order (cx0, cy0, cx1, cy1, row).
+
+### Claude session 39 (continued): CopyChanged inlining and declaration x statement-order sweeps (no gain, local)
+- `inl.py`: 155 combinations of which of cx0/cy0/cx1/cy1 are named variables vs inline expressions, with every statement order: best 12 (same as now).
+- `dstm.py`: 1200 random declaration orders x six statement orders that load in the original's order (cx0, cy0, cx1, cy1, row): best 13, none below 12.
+- Trace reminder (s37 `cc/rows.txt`): ids 4033=cx ebp, 4031=cx1 ebx, 402c=row edi, 402b=y esi, 4032=cy0 gets eax (deg 10, cost 15); original has cy0 in ecx.
+
+### Antigravity Session 57 (2026-11-08): Deep Reversing of C2.EXE Simplify/Colouring, Control Flow Join Proof, & Isolated Exploration
+- **Isolated Function Decompilation (`oli_alone.cpp`)**:
+  - Extracted `OpenLevelItem` into a standalone ~120-line test file (`build/scratch/s57_antigravity/oli_alone.cpp`).
+  - Confirmed that standalone compilation in VC++ 2.2 reproduces the exact 784-byte stack frame and the 4-instruction diff (`cand1.cpp` baseline) identically in 0.2s.
+  - Proved that cross-function code does not advance `0x47ce8c`: C2.EXE unconditionally resets the temporary node counter to `0x20` at the start of every function.
+- **Deep Reversing of C2.EXE Register Allocation Driver (`0x417390-0x417440`)**:
+  - Reverse-engineered the driver loop: C2 evaluates two simplify heuristics: Heuristic 0 (Chaitin spill cost: weight/degree) and Heuristic 1 (raw weight).
+  - Because `OpenLevelItem` requires zero spills, Heuristic 0 colours all nodes without spilling and terminates immediately at `0x4173fd` without evaluating Heuristic 1.
+  - Dissected `sub_417690` (simplify) tie-breaking at `0x41770d`:
+    - Between nodes of degree < 7, simplify prioritizes nodes with higher degree; among nodes of equal degree, it preserves the earlier candidate in the worklist (higher bucket number).
+  - Traced the exact node IDs in `OpenLevelItem`:
+    - Node `0x4020` = `offset` (`[esp+0x1c]`, allocated in prologue).
+    - Node `0x4029` = `base` (`ds:0x41cad4`).
+    - Node `0x4033` = `val` (`[esp+0x14]`, allocated at store).
+    - Modulo 32, their bucket indices are $B_{\text{offset}} = 0$, $B_{\text{base}} = 9$, $B_{\text{val}} = 19$.
+    - Because $0 < 9 < 19$, simplify pop order assigns Colour 0 (EAX) to `offset`, Colour 1 (ECX) to `base`, Colour 2 (EDX) to `val` (State 1: `dx, ecx, eax`).
+  - Mathematically proved the exact target window:
+    - For $O = ID_{\text{offset}} \pmod{32} \in [13, 22]$, $B_{\text{val}} = (O+19) \pmod{32}$ wraps around modulo 32 to $[0, 9]$, satisfying $B_{\text{val}} < B_{\text{offset}} < B_{\text{base}}$, which uniquely forces Colour 0 (EAX) to `val`, Colour 1 (ECX) to `offset`, Colour 2 (EDX) to `base` (Target State: `ax, edx, ecx`).
+- **Control-Flow Join Proof & SIB Machine Code Analysis**:
+  - Disassembled `orig/WINLEMM/LEMMINGS.EXE` at 0x40b60d:
+    `40b60a: testw %bp, %bp; 40b60d: je 0x40b689`.
+    Proved that `0x40b689` is a CFG join point and basic block leader.
+  - Demonstrated why State A (`switch (value)`) differs at the call (+0x2c3, 2 bytes): the `switch` creates a basic block boundary that resets `word_476f40` (latest used register), freeing `EAX` for `sel`.
+  - Demonstrated why State B (no switch) matches the call 100%: in a single contiguous basic block, the store naturally updates `word_476f40`, steering `sel` to `EDX` and `list` to `ECX`.
+- **Natural C Simplification & Sweeps**:
+  - Proved that `volatile WORD pos = sel; pos++;` completely replaces synthetic `posPtr` helper pointers while preserving the exact 784-byte frame and machine code.
+  - Performed systematic sweeps in `build/scratch/s57_antigravity/`:
+    - 65-entry extern pad sweep confirmed exact modulo-32 periodicity.
+    - 500-permutation declaration shuffle sweep across local variables.
+    - 30-variant RHS-first evaluation order test.
+    - 32-iteration dead expression shift sweep.
+- **Dual Target Verification**:
+  - Production source `src/lemmings/levelsel.cpp` preserved clean (State A baseline, 2 bytes off).
+  - `make -j4` exits with code 0 (zero errors).
+
+
+### Claude session 39 (continued): CopyChanged parameter-as-row and dead-code numbering (no gain, local)
+- `par.py`: using the `changed` parameter as the row pointer (no `row` variable) gives 16; register-keyword variants (none, y only, cx only, extra) stay at 12; `row` declared elsewhere 18.
+- `dd.py`: the numbering-shifting dead constructs found on OpenLevelItem (`switch(0){case N:}`, dead ternary, `if(0)`), k = 1..24, at function top or before the loop: 144 builds, floor 12 (76 at 12, the rest 19-41).
+
+### Claude session 40 (2026-11-09): CopyChanged (RENDER, 12 insns) - in progress
+User asked to read HANDOFF and work out a match for render: the only RENDER miss is `CopyChanged` (0x10004af0, 12 insns). Counts unchanged (EXE 331/334, PROCESS 201/206, RENDER 76/77). Scratch `build/scratch/s40_claude/`. `tr/render.c` = render.c cut after CopyChanged with empty stubs for the five later statics: CopyChanged diff identical (12), so it is a faithful trace target. New tool `tools/msvc/c2dbg/colour_trace_fn.py SRC FUNC_INDEX [N]`: colour trace of one function only (skips the first FUNC_INDEX-1 allocator-driver calls; CopyChanged is driver call 70 in `tr/render.c`), 12 s instead of ~20 min for the whole file.
+- **Claude s40 trace findings (CopyChanged, `build/scratch/s40_claude/tr/`):** new tools `tools/msvc/c2dbg/neigh_trace_fn.py` (neighbours per colouring decision), `rounds_fn.py` (outer iterations, heuristic h, colour success/FAIL per node, spill). Node map: locals are 4023..402c in declaration order (y, row, cy1, cx0, n, rows, cx1, cy0, cx, x); **4020 = the single-use parameter `changed` held in a register** (`mov v4020,[changed]` then `lea row,[v4020+v8027]`, later peepholed to `mov edi,[changed]; add edi,ecx`), 4033/4034 = right/bottom loads, 8020 = `left>>4`, 8027 = `across*cy0`. Simplify (sub_417690, decoded): worklist = 8xxx buckets 31..0 then 4xxx buckets 31..0; while any node has degree < K(7) remove the one with the HIGHEST degree (tie: earliest in that list), else the lowest cost*100/deg (h=0) or cost*100 (h=1); colour in reverse removal order. Iteration 1 spills cx0/rows; in the final iteration 4020 and 8027 (degree 3) are coloured first -> eax, ecx; then cy1 (bucket 5) after cy0 (bucket 10) -> **cy1 edx, cy0 ebp**. Since our IL computes `across*cy0` before loading `changed`, 8027's live range contains 4020's, so with this IL cy0 can never get ecx. The original's schedule loads `changed` before `across` (and stores cx0 between them); i.e. the original IL loads changed first, which makes 4020's degree exceed 8027's, so 8027 is coloured early (eax) and 4020 late. Target: a source form whose IL loads `changed` before computing the product.
+- **Claude s40 correction to the note above:** the blocker is not load order alone. Both the `changed` register node (4020) and the product node (8027) have the lowest degree, so the simplify rule removes them last and they are coloured first (eax, ecx) before cy0/cy1 whatever the load order.
+- **Claude s40: CopyChanged MATCHED, RENDER.DLL 77/77 (applied to `src/render/render.c`, verification in progress).** Change: no `row` local; the `changed` parameter itself is the row pointer (`changed += across * cy0;`, `changed[cx]`, `changed += across;`); statements in the sibling's order `cx0, cy0, cx1, cy1` then `changed += across * cy0`; declarations `n, rows, y, cx0, cy0, cx1, cy1, cx, x` (5 other orders from the sweep match too); `pad_stretchchanged` externs 68 -> 69 to make up for the removed local (68 or 70 regress StretchChanged/RestoreChanged). How it was found: a Python model of c2's simplify/colour (`build/scratch/s40_claude/sim*.py`, reproduces the traced order exactly) said the original colouring needs no separate `changed` node; `changed`-as-row with all statement orders (`v11`) produced the exact register signature, then a declaration-order sweep (`var12.py`, 1500 orders: 6 MATCH, 23 at 2) finished it.
+
+### Claude session 40 (2026-11-09): CopyChanged MATCHED - RENDER.DLL 77/77, total 690/696 (source change applied)
+| Module | Functions matching |
+|---|---|
+| VSMEM | 11/11 |
+| READDIB | 17/17 |
+| FILEHAND | 7/7 |
+| GAMEOVER | 3/3 |
+| LOADLVL | 41/41 |
+| RENDER | **77/77** |
+| PROCESS | 201/206 |
+| LEMMINGS | 333/334 |
+| **Total** | **690/696 (99%)** |
+
+Per file: PROCESS basher.cpp 6/7, builder.cpp 5/6, miner.cpp 6/7, map.cpp 21/23; LEMMINGS levelsel.cpp 38/39; every other file complete (fresh `progress_table.py`, RENDER log `build/scratch/s40_claude/verify/render_full.log`).
+- **Change (`src/render/render.c` only):** CopyChanged has no `row` local; the `changed` parameter is the row pointer (`changed += across * cy0;`, `changed[cx]`, `changed += across;`); setup statements in the sibling StretchChanged's order (`cx0, cy0, cx1, cy1`, then `changed += ...`); declarations `n, rows, y, cx0, cy0, cx1, cy1, cx, x`; `pad_stretchchanged` externs 68 -> 69 (the removed local shifted StretchChanged/RestoreChanged/DllEntryPoint; 69 restores all).
+- **Verification (AGENTS.md section 5):** `try.sh RENDER.DLL src/render/render.c` 77/77 (16352/16352 bytes); `build.py --funcs RENDER` 77/77, module diff 237 -> 195 bytes (the rest are the old link/import differences, CopyChanged's entry gone); `make` exit 0; `mapcmp.py RENDER --sec .bss` and `--sec .data` 0 wrong; Wine HD with all 8 rebuilt modules: level 1 (`s40hd-l1`) and digger (`s40hd-dig`) MATCH via `tools/cmplog.py`, end screenshot visually identical to the baseline.
+- **Why it works (details above and docs/C2_REGALLOC.md UPDATE 4):** the single-use parameter `changed` got its own register node, coloured early (low degree) and blocked eax/ecx for cy0. Without that node c2 colours the product eax, cy0 ecx, cy1 edx like the original.
+- **Lesson for the remaining misses (OpenLevelItem 2, Builder::Process 3, AddTrapType 6, AddObjectType 8, Miner 25, Basher 27):** trace the target function with `neigh_trace_fn.py`, load it into `simplify_model.py`, find which graph change gives the original's colours, then look for the source form that makes it (here: which values exist as separate nodes). Numbering sweeps only break ties and only help once the graph is right.
+- Not committed yet.

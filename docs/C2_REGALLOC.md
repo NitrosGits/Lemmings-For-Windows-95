@@ -119,3 +119,19 @@ order. Anything that renumbers ids (unused locals, extra expression nodes, state
 k unused locals to `OpenLevelItem` (`build/scratch/s36_claude/oli_shift.py`, `oli_shift2.py`, 40 builds, k = 1..40) changes the output
 non-monotonically between three states (2, 5 and 92-98 differing instructions; k = 1,6,7,8,14,22-26,30-33,38-40 stay at the
 baseline 2; 9,10,15-18,34 give 5; 11-13,19-21,27-29,35-37 give 92-98), so numbering does matter, but none of these 40 values beats 2.
+
+## UPDATE 4 (Claude s40): simplify order decoded; CopyChanged matched with it  -- observed (disassembly + debugger)
+
+* **sub_417690 (simplify)** builds the worklist by prepending every node of the 0x4xxx buckets 0..31 and then the 0x8xxx
+  buckets 0..31 (skipping flag 0x800), so the list runs 0x8xxx bucket 31..0, then 0x4xxx bucket 31..0. Each step: if a
+  node has degree < K (7 without frame pointer) remove the one with the **highest** degree (tie: first in the list);
+  otherwise remove the one with the lowest metric `[node+0xc+4*h]` (sub_417770: h=0 cost*100/degree, h=1 cost*100;
+  cost 30000 or degree 0 -> 3,000,000). Removing decrements every neighbour's degree. sub_417580 colours in reverse
+  removal order. So low-degree nodes are coloured **first**.
+* **Driver sub_417260:** per outer iteration (graph rebuilt) it runs h=0 and h=1, keeps the one with the lower total
+  cost of uncoloured nodes, re-colours with it if needed, and spills the uncoloured nodes (sub_417c80), then iterates.
+* **Single-use parameters get named register nodes** (`mov v40xx,[param]`, opcode 0x70140): in CopyChanged `changed`
+  was node 4020 (`lea row,[v4020+product]`, later peepholed to `mov edi,[changed]; add edi,ecx`). Being short-lived it
+  had degree 3 and took eax before cy0/cy1 were coloured, which pushed cy0 to ebp. Using the parameter itself as the
+  row pointer (`changed += across * cy0`) removes that node; with the sibling's statement order and a declaration
+  order from a sweep, CopyChanged matches. Model: `tools/msvc/c2dbg/simplify_model.py`.

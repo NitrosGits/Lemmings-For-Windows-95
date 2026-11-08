@@ -2370,46 +2370,45 @@ extern int pad_copychanged0, pad_copychanged1, pad_copychanged2, pad_copychanged
 static void CopyChanged(HDC dst, int dx, int dy, HDC src, int left, int top, int right, int bottom,
                         BYTE *changed, int across, int down, BYTE *bits, BITMAPINFO *bmi)
 {
-    register int y;
-    BYTE *row;
-    int cy1;
-    int cx0;
     int n;
     int rows;
-    int cx1;
+    register int y;
+    int cx0;
     int cy0;
+    int cx1;
+    int cy1;
     register int cx;
     int x;
 
     cx0 = left >> 4;
-    cy1 = (bottom + 7) >> 3;
     cy0 = top >> 3;
-    row = changed + across * cy0;
     cx1 = (right + 15) >> 4;
+    cy1 = (bottom + 7) >> 3;
+    changed += across * cy0;
     if (cy1 > cy0) {
         y = 0;
         rows = cy1 - cy0;
         do {
             cx = cx0;
             while (cx < cx1) {
-                if (row[cx]) {
+                if (changed[cx]) {
                     n = 16;
                     x = (cx - cx0) << 4;
-                    for (cx++; cx < cx1 && row[cx]; cx++)
+                    for (cx++; cx < cx1 && changed[cx]; cx++)
                         n += 16;
                     BitBlt(dst, x + dx, dy + y, n, 8, src, left + x, top + y, SRCCOPY);
                 } else
-                    for (cx++; cx < cx1 && !row[cx]; cx++)
+                    for (cx++; cx < cx1 && !changed[cx]; cx++)
                         ;
             }
-            row += across;
+            changed += across;
             y += 8;
         } while (--rows);
     }
 }
 
 /* Symbol padding (see docs/DECOMP.md): the original had more declarations here. */
-extern int pad_stretchchanged0, pad_stretchchanged1, pad_stretchchanged2, pad_stretchchanged3, pad_stretchchanged4, pad_stretchchanged5, pad_stretchchanged6, pad_stretchchanged7, pad_stretchchanged8, pad_stretchchanged9, pad_stretchchanged10, pad_stretchchanged11, pad_stretchchanged12, pad_stretchchanged13, pad_stretchchanged14, pad_stretchchanged15, pad_stretchchanged16, pad_stretchchanged17, pad_stretchchanged18, pad_stretchchanged19, pad_stretchchanged20, pad_stretchchanged21, pad_stretchchanged22, pad_stretchchanged23, pad_stretchchanged24, pad_stretchchanged25, pad_stretchchanged26, pad_stretchchanged27, pad_stretchchanged28, pad_stretchchanged29, pad_stretchchanged30, pad_stretchchanged31, pad_stretchchanged32, pad_stretchchanged33, pad_stretchchanged34, pad_stretchchanged35, pad_stretchchanged36, pad_stretchchanged37, pad_stretchchanged38, pad_stretchchanged39, pad_stretchchanged40, pad_stretchchanged41, pad_stretchchanged42, pad_stretchchanged43, pad_stretchchanged44, pad_stretchchanged45, pad_stretchchanged46, pad_stretchchanged47, pad_stretchchanged48, pad_stretchchanged49, pad_stretchchanged50, pad_stretchchanged51, pad_stretchchanged52, pad_stretchchanged53, pad_stretchchanged54, pad_stretchchanged55, pad_stretchchanged56, pad_stretchchanged57, pad_stretchchanged58, pad_stretchchanged59, pad_stretchchanged60, pad_stretchchanged61, pad_stretchchanged62, pad_stretchchanged63, pad_stretchchanged64, pad_stretchchanged65, pad_stretchchanged66, pad_stretchchanged67;
+extern int pad_stretchchanged0, pad_stretchchanged1, pad_stretchchanged2, pad_stretchchanged3, pad_stretchchanged4, pad_stretchchanged5, pad_stretchchanged6, pad_stretchchanged7, pad_stretchchanged8, pad_stretchchanged9, pad_stretchchanged10, pad_stretchchanged11, pad_stretchchanged12, pad_stretchchanged13, pad_stretchchanged14, pad_stretchchanged15, pad_stretchchanged16, pad_stretchchanged17, pad_stretchchanged18, pad_stretchchanged19, pad_stretchchanged20, pad_stretchchanged21, pad_stretchchanged22, pad_stretchchanged23, pad_stretchchanged24, pad_stretchchanged25, pad_stretchchanged26, pad_stretchchanged27, pad_stretchchanged28, pad_stretchchanged29, pad_stretchchanged30, pad_stretchchanged31, pad_stretchchanged32, pad_stretchchanged33, pad_stretchchanged34, pad_stretchchanged35, pad_stretchchanged36, pad_stretchchanged37, pad_stretchchanged38, pad_stretchchanged39, pad_stretchchanged40, pad_stretchchanged41, pad_stretchchanged42, pad_stretchchanged43, pad_stretchchanged44, pad_stretchchanged45, pad_stretchchanged46, pad_stretchchanged47, pad_stretchchanged48, pad_stretchchanged49, pad_stretchchanged50, pad_stretchchanged51, pad_stretchchanged52, pad_stretchchanged53, pad_stretchchanged54, pad_stretchchanged55, pad_stretchchanged56, pad_stretchchanged57, pad_stretchchanged58, pad_stretchchanged59, pad_stretchchanged60, pad_stretchchanged61, pad_stretchchanged62, pad_stretchchanged63, pad_stretchchanged64, pad_stretchchanged65, pad_stretchchanged66, pad_stretchchanged67, pad_stretchchanged68;
 
 /* 0x10004bd0: CopyChanged, stretched to width x height */
 static void StretchChanged(HDC dst, int dx, int dy, HDC src, int left, int top, int right, int bottom,

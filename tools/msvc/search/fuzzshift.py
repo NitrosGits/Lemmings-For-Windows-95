@@ -9,6 +9,14 @@ random.seed(int(sys.argv[5]) if len(sys.argv)>5 else 1)
 s=open(srcp).read()
 i=s.index(sig); b=s.index('{\n',i)+2; e=s.index('\n}\n',b)
 lines=s[b:e].split('\n')
+_x=[]
+for _l in lines:   # split `T a, b;` into separate declarations
+    _m=re.match(r'^(\s+)((?:register\s+)?(?:unsigned\s+)?[A-Za-z_]\w*[\s\*]+)(\**\w+),\s*(\**\w+)(,\s*\**\w+)*;\s*$',_l)
+    if _m and '(' not in _l and '=' not in _l:
+        _t=_m.group(2); _names=[n.strip() for n in _l.strip().rstrip(';')[len(_t.strip()):].split(',')] if False else [n.strip() for n in _l.strip()[len(_t.strip()):].rstrip(';').split(',')]
+        _x+= [f'{_m.group(1)}{_t}{n};' for n in _names]
+    else: _x.append(_l)
+lines=_x
 DECL=re.compile(r'^(\s*)((?:register\s+)?(?:unsigned\s+|struct\s+)?[A-Za-z_]\w*[\s\*]+)(\**[A-Za-z_]\w*(?:\[[^\]]*\])?)(\s*=[^;]*)?;\s*$')
 nd=0
 while nd<len(lines) and (DECL.match(lines[nd]) or not lines[nd].strip()) and not re.match(r'\s*(return|if|for|while|switch)\b',lines[nd]): nd+=1

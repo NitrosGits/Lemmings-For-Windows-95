@@ -54,6 +54,7 @@ To avoid race conditions and merge conflicts, tasks are assigned to distinct fil
   - `src/process/map.cpp` (`Map::AddTrapType` 0x10004880, 6; `Map::AddObjectType` 0x10004760, 11): repaired on the user's request on 2026-11-07 (see HANDOFF "Claude session 35"); hand back by noting it in HANDOFF.
   - (released 2026-11-07, no edits) `src/lemmings/levelsel.cpp` OpenLevelItem: tried on the user's request, see HANDOFF Claude s35.
   - `src/render/render.c` `Renderer_Render` (0x10001020): matched 2026-11-07 on the user's request by Claude s37 (17 unused locals + 17 fewer `pad_newcanvas` externs, see HANDOFF "Claude session 37"); hand back by noting it in HANDOFF.
+  - `src/render/render.c` `CopyChanged` (0x10004af0): matched 2026-11-09 on the user's request by Claude s40 (`changed` used as the row pointer, sibling statement order, declaration order, +1 `pad_stretchchanged` extern; see HANDOFF "Claude session 40"); hand back by noting it in HANDOFF.
 
 * **Naming rule for every agent**: start each HANDOFF.md heading with the agent's name (`### Claude session N`, `### Codex Session N`, `### Antigravity Session N`), only append to HANDOFF.md (never rewrite another agent's lines), and update your own Focus list here before editing a file.
 
