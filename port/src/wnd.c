@@ -1026,7 +1026,7 @@ BOOL WINAPI ShowWindow(HWND h, int cmd)
             break;
         default:
             SDL_ShowWindow(w->sdl);
-            if (cmd != SW_SHOWNA && cmd != SW_SHOWNOACTIVE)
+            if (cmd != SW_SHOWNA && cmd != SW_SHOWNOACTIVATE)
                 SDL_RaiseWindow(w->sdl);
             break;
         }
@@ -1063,7 +1063,9 @@ BOOL WINAPI SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT 
         cx = 0;
     if (cy < 0)
         cy = 0;
-    if (!w->parent && (w->style & WS_THICKFRAME) && w->minW && !(flags & SWP_NOSIZE)) {
+    if (!w->parent && (w->style & WS_THICKFRAME) && !(flags & SWP_NOSIZE)) {
+        /* as DefWindowProc's WM_WINDOWPOSCHANGING: the window's limits now */
+        update_minmax(w);
         if (cx < w->minW)
             cx = w->minW;
         if (cy < w->minH)

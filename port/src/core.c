@@ -630,8 +630,10 @@ int main(int argc, char **argv)
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
         port_fatal("SDL_Init: %s", SDL_GetError());
+    harness_init();
     data = find_data_dir(argc, argv);
-    pref = SDL_GetPrefPath("Visual Sciences", "Lemmings");
+    pref = SDL_getenv("LEMMINGS_PREFS") ? SDL_strdup(SDL_getenv("LEMMINGS_PREFS"))
+                                        : SDL_GetPrefPath("Visual Sciences", "Lemmings");
     if (!pref)
         port_fatal("No folder for the settings: %s", SDL_GetError());
     port_trace("data %s, settings %s", data, pref);
@@ -643,8 +645,113 @@ int main(int argc, char **argv)
     menu_init();
     controls_init();
     wave_init();
-    harness_init();
     ret = WinMain(g_hinst, NULL, cmdline, SW_SHOWDEFAULT);
     shutdown_layer();
     return ret;
+}
+
+/* ---- user32: rectangles ---- */
+
+BOOL WINAPI SetRect(LPRECT r, int left, int top, int right, int bottom)
+{
+    *r = (RECT){left, top, right, bottom};
+    return TRUE;
+}
+
+BOOL WINAPI SetRectEmpty(LPRECT r)
+{
+    memset(r, 0, sizeof *r);
+    return TRUE;
+}
+
+BOOL WINAPI CopyRect(LPRECT dst, const RECT *src)
+{
+    if (!dst || !src)
+        return FALSE;
+    *dst = *src;
+    return TRUE;
+}
+
+BOOL WINAPI IsRectEmpty(const RECT *r)
+{
+    return r->left >= r->right || r->top >= r->bottom;
+}
+
+BOOL WINAPI PtInRect(const RECT *r, POINT pt)
+{
+    return pt.x >= r->left && pt.x < r->right && pt.y >= r->top && pt.y < r->bottom;
+}
+
+BOOL WINAPI IntersectRect(LPRECT dst, const RECT *a, const RECT *b)
+{
+    return rect_intersect(dst, a, b);
+}
+
+BOOL WINAPI UnionRect(LPRECT dst, const RECT *a, const RECT *b)
+{
+    if (IsRectEmpty(a)) {
+        *dst = *b;
+        return !IsRectEmpty(b);
+    }
+    if (IsRectEmpty(b)) {
+        *dst = *a;
+        return TRUE;
+    }
+    dst->left = a->left < b->left ? a->left : b->left;
+    dst->top = a->top < b->top ? a->top : b->top;
+    dst->right = a->right > b->right ? a->right : b->right;
+    dst->bottom = a->bottom > b->bottom ? a->bottom : b->bottom;
+    return TRUE;
+}
+
+BOOL WINAPI OffsetRect(LPRECT r, int dx, int dy)
+{
+    r->left += dx;
+    r->right += dx;
+    r->top += dy;
+    r->bottom += dy;
+    return TRUE;
+}
+
+BOOL WINAPI InflateRect(LPRECT r, int dx, int dy)
+{
+    r->left -= dx;
+    r->right += dx;
+    r->top -= dy;
+    r->bottom += dy;
+    return TRUE;
+}
+
+BOOL WINAPI EqualRect(const RECT *a, const RECT *b)
+{
+    return !memcmp(a, b, sizeof *a);
+}
+
+/* ---- Help: Windows Help is gone; the original's English PDF manual instead ---- */
+
+BOOL WINAPI WinHelpA(HWND hwnd, LPCSTR file, UINT cmd, ULONG_PTR data)
+{
+    char host[1100], url[1200];
+    FILE *f;
+
+    (void)hwnd;
+    (void)file;
+    (void)data;
+    if (cmd == HELP_QUIT)
+        return TRUE;
+    if (!file_host_path("C:\\WINLEMM\\MANUALS\\ENGLISH.PDF", host, sizeof host, 0) || !(f = fopen(host, "rb")))
+        return FALSE;
+    fclose(f);
+    snprintf(url, sizeof url, "file://%s", host);
+    return SDL_OpenURL(url);
+}
+
+/* ---- The C runtime's DLL hook (vscrt.h): nothing to set up natively ---- */
+
+BOOL WINAPI _CRT_INIT(HINSTANCE hinst, DWORD reason, LPVOID reserved)
+{
+    (void)hinst;
+    (void)reason;
+    (void)reserved;
+    return TRUE;
 }

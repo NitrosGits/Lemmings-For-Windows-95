@@ -434,6 +434,11 @@ void WINAPI ProcessArmageddon(void)
     }
 }
 
+#ifndef PORT_SDL
+/* (Not in the native build: linked into one executable, these would replace the
+   allocator of the whole process, system libraries included, not just PROCESS.DLL's.
+   PROCESS never mixes new/delete with VSMEM_Allocate/VSMEM_Free, so there it uses
+   the C++ heap.) */
 /* 0x10003bf0 */
 void *operator new(size_t size)
 {
@@ -457,4 +462,5 @@ void operator delete[](void *p)
 {
     operator delete(p);
 }
+#endif
 #endif

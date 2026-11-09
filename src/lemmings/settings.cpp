@@ -183,7 +183,9 @@ void ReadIniSettings(char *file)
         IsRegistered();
         OpenUser(g_regUserUsed);
         CreateUserDatabase(g_regUserUsed);
+#ifndef PORT_SDL                /* the native build has no Windows uninstaller to install */
         InstallUninstaller();
+#endif
     }
     if (!strcmp(g_userName, "Ben Dog"))
         OpenUser(g_regUserUsed);
