@@ -15,17 +15,6 @@
 #include "cocoa_win32.h"
 #include "keycodes.h"
 
-@class PortWindow, PortView;
-
-struct PlatWindow {
-    PortWindow *win;
-    PortView *view;
-    Wnd *wnd;
-    PlatWindow *owner;
-    int flags;
-    int showing;
-};
-
 static NSMutableArray *g_injected;          /* the harness's events' timestamps */
 static unichar g_keyChar[128];              /* what each key typed last (TranslateMessage) */
 
@@ -43,10 +32,6 @@ static NSRect cocoa_rect(int x, int y, int w, int h)
 
 /* ---- The views and windows ---- */
 
-@interface PortWindow : NSWindow
-@property(nonatomic) PlatWindow *plat;
-@end
-
 @implementation PortWindow
 - (BOOL)canBecomeKeyWindow
 {
@@ -56,10 +41,6 @@ static NSRect cocoa_rect(int x, int y, int w, int h)
 {
     return (self.styleMask & NSWindowStyleMaskTitled) != 0;
 }
-@end
-
-@interface PortView : NSView
-@property(nonatomic) PlatWindow *plat;
 @end
 
 /* The harness's events: AppKit hands back a copy of a posted event, with its
@@ -81,6 +62,9 @@ static NSTimeInterval inject_stamp(void)
     if (t < last + 1e-5)
         t = last + 1e-5;
     last = t;
+    /* an event a control's own tracking loop took never comes back here */
+    while (g_injected.count && [g_injected[0] doubleValue] < t - 10)
+        [g_injected removeObjectAtIndex:0];
     [g_injected addObject:@(t)];
     return t;
 }
@@ -579,7 +563,7 @@ void plat_window_destroy(PlatWindow *p)
         p->view.plat = NULL;
         [p->win orderOut:nil];
         p->win.delegate = nil;
-        [p->win close];
+        cocoa_bury(p->win);     /* closed at the next pump: a button of it may be running its action */
         p->win = nil;
         p->view = nil;
     }
@@ -744,9 +728,26 @@ int plat_app_active(void)
 
 /* ---- Events and input state ---- */
 
+static NSMutableArray *g_graveyard;
+
+void cocoa_bury(id object)
+{
+    if (!g_graveyard)
+        g_graveyard = [NSMutableArray new];
+    [g_graveyard addObject:object];
+}
+
 int plat_pump(int timeout_ms)
 {
     @autoreleasepool {
+        if (g_graveyard.count) {
+            NSArray *dead = [g_graveyard copy];
+
+            [g_graveyard removeAllObjects];
+            for (id o in dead)
+                if ([o isKindOfClass:[NSWindow class]])
+                    [(NSWindow *)o close];
+        }
         NSDate *until = timeout_ms > 0 ? [NSDate dateWithTimeIntervalSinceNow:timeout_ms / 1000.0]
                                        : [NSDate distantPast];
         NSEvent *e;
@@ -820,7 +821,7 @@ int plat_key_char(int scancode, int mods)
     return scancode >= 0 && scancode < 128 ? g_keyChar[scancode] : 0;
 }
 
-static int g_injectedDown;
+static int g_injectedDown, g_swallowUp;
 
 void plat_inject_mouse(PlatWindow *p, int x, int y, int button, int down, int clicks, int moveOnly)
 {
@@ -829,18 +830,37 @@ void plat_inject_mouse(PlatWindow *p, int x, int y, int button, int down, int cl
         NSEvent *e;
         NSPoint loc = NSMakePoint(x + 0.5, p->view.bounds.size.height - y - 0.5);
 
+        NSView *hit;
+
         if (moveOnly)
             t = g_injectedDown ? NSEventTypeLeftMouseDragged : NSEventTypeMouseMoved;
         else if (button == 1)
             t = down ? NSEventTypeRightMouseDown : NSEventTypeRightMouseUp;
         else
             t = down ? NSEventTypeLeftMouseDown : NSEventTypeLeftMouseUp;
+        if (!moveOnly && !down && g_swallowUp) {
+            g_swallowUp = 0;        /* sent already, with the down */
+            g_injectedDown = 0;
+            return;
+        }
         if (!moveOnly)
             g_injectedDown = down;
         e = [NSEvent mouseEventWithType:t location:loc modifierFlags:0 timestamp:inject_stamp()
                            windowNumber:p->win.windowNumber context:nil eventNumber:0 clickCount:moveOnly ? 0 : clicks
                                pressure:down ? 1 : 0];
         [NSApp postEvent:e atStart:NO];
+        /* a native control tracks the mouse in a loop of its own until the
+           button comes up, and the harness can't run meanwhile: the up goes
+           with the down */
+        hit = down && !moveOnly ? [p->view hitTest:loc] : nil;
+        if (hit && hit != p->view) {
+            e = [NSEvent mouseEventWithType:button == 1 ? NSEventTypeRightMouseUp : NSEventTypeLeftMouseUp
+                                   location:loc modifierFlags:0 timestamp:inject_stamp()
+                               windowNumber:p->win.windowNumber context:nil eventNumber:0 clickCount:clicks
+                                   pressure:0];
+            [NSApp postEvent:e atStart:NO];
+            g_swallowUp = 1;
+        }
     }
 }
 

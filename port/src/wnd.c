@@ -858,6 +858,8 @@ HWND WINAPI CreateWindowExA(DWORD exStyle, LPCSTR clsName, LPCSTR name, DWORD st
     if (!wnd_get(w->h))
         return NULL;
     update_minmax(w);
+    if (style & WS_CHILD)
+        peer_create(w);     /* a dialog's control: the system's own view, where there is one */
     if (style & WS_VISIBLE) {
         w->style &= ~WS_VISIBLE;
         ShowWindow(w->h, (style & WS_MAXIMIZE) && !(style & WS_CHILD) ? SW_SHOWMAXIMIZED : SW_SHOW);
@@ -893,6 +895,7 @@ static void free_tree(Wnd *w)
     if (port_active == w)
         port_active = NULL;
     msg_window_gone(w);
+    peer_destroy(w);
     if (w->ctlFree)
         w->ctlFree(w);
     if (!w->parent) {
@@ -1510,6 +1513,8 @@ HWND WINAPI SetFocus(HWND h)
         if (top != port_active && top->plat && wnd_visible(top))
             plat_window_raise(top->plat);
         SendMessageA(w->h, WM_SETFOCUS, (WPARAM)(old && !old->destroyed ? old->h : NULL), 0);
+        if (port_focus == w)
+            peer_focus(w);
     }
     return old && !old->destroyed ? old->h : NULL;
 }

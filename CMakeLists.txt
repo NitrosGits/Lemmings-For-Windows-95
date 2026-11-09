@@ -42,7 +42,7 @@ add_custom_command(
 add_library(winsdl OBJECT
   port/src/core.c port/src/file.c port/src/reg.c port/src/gdi.c port/src/font.c
   port/src/wnd.c port/src/msg.c port/src/res.c port/src/menu.c port/src/dlg.c
-  port/src/controls.c port/src/wave.c port/src/mci.c port/src/harness.c
+  port/src/controls.c port/src/peer.c port/src/wave.c port/src/mci.c port/src/harness.c
   ${RES_C})
 set_target_properties(winsdl PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS ON)
 target_include_directories(winsdl PUBLIC port/include PRIVATE port/src)

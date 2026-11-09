@@ -15,6 +15,28 @@
 #undef BOOL
 #undef LoadResource
 
+/* plat_cocoa.m: a top-level window, and the view showing its framebuffer
+   (the native controls are its subviews) */
+@interface PortWindow : NSWindow
+@property(nonatomic) PlatWindow *plat;
+@end
+
+@interface PortView : NSView
+@property(nonatomic) PlatWindow *plat;
+@end
+
+struct PlatWindow {
+    PortWindow *win;
+    PortView *view;
+    Wnd *wnd;
+    PlatWindow *owner;
+    int flags;
+    int showing;
+};
+
+/* keeps a window or view until the next pump: AppKit may still be inside it */
+void cocoa_bury(id object);
+
 /* menu_cocoa.m */
 void cocoa_menu_init(id appDelegate);
 

@@ -451,7 +451,8 @@ static LRESULT CALLBACK ButtonProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     type = btn_type(w);
     switch (msg) {
     case WM_PAINT:
-        btn_paint(w);
+        if (!peer_paint(w))
+            btn_paint(w);
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -754,6 +755,8 @@ static LRESULT CALLBACK EditProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     w->ctlFree = ctl_free;
     switch (msg) {
     case WM_PAINT:
+        if (peer_paint(w))
+            return 0;
         {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(h, &ps);
@@ -956,6 +959,7 @@ typedef struct ListBox {
     int redraw;
     int measured;
     int tracking;
+    int serial;                 /* changes with the rows (a native view reloads them) */
 } ListBox;
 
 static int lb_strings(Wnd *w)
@@ -1017,6 +1021,7 @@ static void lb_update_scroll(Wnd *w, ListBox *l)
 
 static void lb_changed(Wnd *w, ListBox *l)
 {
+    l->serial++;
     lb_update_scroll(w, l);
     if (l->redraw)
         wnd_invalidate(w, NULL, 1);
@@ -1187,7 +1192,8 @@ static LRESULT CALLBACK ListBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         lb_update_scroll(w, l);
         return 0;
     case WM_PAINT:
-        lb_paint(w, l);
+        if (!peer_paint(w))
+            lb_paint(w, l);
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -1395,6 +1401,7 @@ static LRESULT CALLBACK ListBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         if (i < 0 || i >= l->n)
             return LB_ERR;
         l->items[i].data = (ULONG_PTR)lp;
+        l->serial++;
         return 0;
     case LB_GETTOPINDEX:
         return l->top;
@@ -1446,6 +1453,11 @@ static LRESULT CALLBACK ListBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return l->caret;
     }
     return DefWindowProcA(h, msg, wp, lp);
+}
+
+int lb_serial(Wnd *w)
+{
+    return w->ctl && !strcasecmp(w->cls->name, "ListBox") ? ((ListBox *)w->ctl)->serial : 0;
 }
 
 void controls_init(void)

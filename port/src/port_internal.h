@@ -156,6 +156,7 @@ struct Wnd {
     struct Dlg *dlg;
     void *ctl;
     void (*ctlFree)(Wnd *w);
+    struct Peer *peer;      /* the system's view showing this control (peer.c) */
 };
 
 extern Wnd *port_top;       /* top-level windows, front first */
@@ -293,6 +294,13 @@ void mci_quit(void);
 extern int port_harness;
 void harness_init(void);
 void harness_poll(void);
+/* peer.c: native views for dialog controls */
+void peer_create(Wnd *w);
+void peer_destroy(Wnd *w);
+void peer_sync_all(void);
+void peer_focus(Wnd *w);
+int peer_paint(Wnd *w);     /* WM_PAINT of a control with a view: 1 if handled */
+int lb_serial(Wnd *w);      /* controls.c: changes when a list box's rows do */
 void port_harness_log(const char *fmt, ...);
 int harness_cursor(POINT *pt);
 int harness_key(int vk);

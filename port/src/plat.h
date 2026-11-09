@@ -86,6 +86,23 @@ void plat_menubar_set(uint32_t hwnd, uint32_t hmenu);   /* hmenu 0: hwnd's menu 
 /* the harness: chooses "Menu/Item" (the application menu is "App") */
 int plat_menu_choose(const char *path);
 
+/* ---- Native controls (macOS) ----
+ * The system's own views over a dialog's buttons, edit fields and list boxes.
+ * The layer's control stays the truth (its state, messages, notifications):
+ * peer.c shows its state in the view, and the view reports what the user does
+ * (input_control*). Frames are in the top-level window's framebuffer. */
+typedef struct PlatControl PlatControl;
+enum { PC_BUTTON, PC_DEFBUTTON, PC_CHECKBOX, PC_RADIO, PC_GROUPBOX, PC_EDIT, PC_LIST, PC_LIST_OWNERDRAW };
+PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind);  /* NULL: the layer draws it */
+void plat_control_destroy(PlatControl *c);
+void plat_control_frame(PlatControl *c, int x, int y, int w, int h, int visible, int enabled);
+void plat_control_text(PlatControl *c, const char *utf8);
+void plat_control_check(PlatControl *c, int check);
+void plat_control_focus(PlatWindow *top, PlatControl *c);      /* NULL: the window itself */
+void plat_list_reload(PlatControl *c, int rows, int rowHeight);
+void plat_list_select(PlatControl *c, int row);               /* -1: none */
+void plat_list_top(PlatControl *c, int row);                  /* the first row shown */
+
 /* ---- Sound: streams mixed to the default output ---- */
 int plat_audio_open(void);
 void plat_audio_close(void);
@@ -111,6 +128,20 @@ void input_app_deactivated(void);
 void input_quit(void);
 void input_command(int id);                 /* a menu command to the main window */
 void input_tracking_idle(void);             /* now and then while the system tracks a menu or drag */
+
+/* ---- What native controls report and ask (peer.c) ---- */
+enum {
+    PCE_CLICK,                              /* a button pressed */
+    PCE_SELECT, PCE_DBLCLK,                 /* a list's row (arg) chosen, double-clicked */
+    PCE_TOP,                                /* a list scrolled: arg is the first row shown */
+    PCE_FOCUS,                              /* the view took the keyboard */
+    PCE_KEY                                 /* a dialog key (VK_RETURN, VK_ESCAPE, VK_TAB) for the layer */
+};
+void input_control(uint32_t hwnd, int event, int arg);
+void input_control_text(uint32_t hwnd, const char *utf8);     /* an edit field's new text */
+int list_native_text(uint32_t hwnd, int row, char *utf8, int size);
+/* an owner-drawn row through WM_DRAWITEM, 0x00RRGGBB pixels; 0 if not drawn */
+int list_native_draw(uint32_t hwnd, int row, int w, int h, uint32_t *xrgb);
 
 /* ---- What a system menu bar asks and reports (menu.c) ---- */
 int menu_native_count(uint32_t hmenu);      /* -1: no such menu */

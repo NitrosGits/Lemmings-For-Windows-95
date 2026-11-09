@@ -625,6 +625,28 @@ int plat_menu_choose(const char *path)
     return 0;
 }
 
+/* ---- Controls: drawn by the layer ---- */
+
+PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
+{
+    (void)top;
+    (void)hwnd;
+    (void)kind;
+    return NULL;
+}
+
+void plat_control_destroy(PlatControl *c) { (void)c; }
+void plat_control_frame(PlatControl *c, int x, int y, int w, int h, int visible, int enabled)
+{
+    (void)c; (void)x; (void)y; (void)w; (void)h; (void)visible; (void)enabled;
+}
+void plat_control_text(PlatControl *c, const char *utf8) { (void)c; (void)utf8; }
+void plat_control_check(PlatControl *c, int check) { (void)c; (void)check; }
+void plat_control_focus(PlatWindow *top, PlatControl *c) { (void)top; (void)c; }
+void plat_list_reload(PlatControl *c, int rows, int rowHeight) { (void)c; (void)rows; (void)rowHeight; }
+void plat_list_select(PlatControl *c, int row) { (void)c; (void)row; }
+void plat_list_top(PlatControl *c, int row) { (void)c; (void)row; }
+
 /* ---- Sound ---- */
 
 static SDL_AudioDeviceID g_dev;

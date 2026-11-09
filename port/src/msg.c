@@ -552,6 +552,7 @@ void msg_present(void)
 {
     Wnd *w;
 
+    peer_sync_all();
     for (w = port_top; w; w = w->next) {
         if (!w->dirty || w->destroyed || !w->plat || !wnd_visible(w))
             continue;
