@@ -64,7 +64,7 @@ static RegKey *find_child(RegKey *k, const char *name, size_t n, int create)
     RegKey *c, **last = &k->child;
 
     for (c = k->child; c; last = &c->next, c = c->next)
-        if (!c->deleted && strlen(c->name) == n && !SDL_strncasecmp(c->name, name, n))
+        if (!c->deleted && strlen(c->name) == n && !strncasecmp(c->name, name, n))
             return c;
     if (!create)
         return NULL;
@@ -111,12 +111,12 @@ static RegValue *find_value(RegKey *k, const char *name, int create)
     if (!name)
         name = "";
     for (v = k->values; v; last = &v->next, v = v->next)
-        if (!SDL_strcasecmp(v->name, name))
+        if (!strcasecmp(v->name, name))
             return v;
     if (!create)
         return NULL;
     v = calloc(1, sizeof *v);
-    v->name = SDL_strdup(name);
+    v->name = strdup(name);
     *last = v;
     return v;
 }
@@ -139,12 +139,12 @@ static void set_value(RegKey *k, const char *name, DWORD type, const BYTE *data,
 static void path_of(RegKey *k, char *out, size_t size)
 {
     if (!k->parent) {
-        SDL_strlcpy(out, g_rootNames[k - g_roots], size);
+        port_strlcpy(out, g_rootNames[k - g_roots], size);
         return;
     }
     path_of(k->parent, out, size);
-    SDL_strlcat(out, "\\", size);
-    SDL_strlcat(out, k->name, size);
+    port_strlcat(out, "\\", size);
+    port_strlcat(out, k->name, size);
 }
 
 static void put_string(FILE *f, const char *s, size_t n)

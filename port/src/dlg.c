@@ -42,7 +42,7 @@ static const PortResDialog *find_template(LPCSTR name)
     const PortResDialog *d;
 
     for (d = port_res_dialogs; d->controls; d++) {
-        if (IS_INTRESOURCE(name) ? d->id == (int)(uintptr_t)name : (d->name && !SDL_strcasecmp(d->name, name)))
+        if (IS_INTRESOURCE(name) ? d->id == (int)(uintptr_t)name : (d->name && !strcasecmp(d->name, name)))
             return d;
     }
     return NULL;
@@ -166,7 +166,7 @@ INT_PTR WINAPI DialogBoxParamA(HINSTANCE inst, LPCSTR name, HWND parent, DLGPROC
         HDC hdc = GetDC(NULL);
 
         d->font = CreateFontA(-MulDiv(t->fontSize, GetDeviceCaps(hdc, LOGPIXELSY), 72), 0, 0, 0,
-                              !SDL_strcasecmp(t->font, "System") ? FW_BOLD : FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0,
+                              !strcasecmp(t->font, "System") ? FW_BOLD : FW_NORMAL, 0, 0, 0, 0, 0, 0, 0, 0,
                               t->font);
         ReleaseDC(NULL, hdc);
     } else
@@ -255,8 +255,8 @@ INT_PTR WINAPI DialogBoxParamA(HINSTANCE inst, LPCSTR name, HWND parent, DLGPROC
         DestroyWindow(h);
     if (owner && wnd_get(owner->h)) {
         port_active = owner;
-        if (owner->sdl)
-            SDL_RaiseWindow(owner->sdl);
+        if (owner->plat)
+            plat_window_raise(owner->plat);
     }
     if (d->font != font_default())
         DeleteObject(d->font);
@@ -292,7 +292,7 @@ static Wnd *default_button(Wnd *dlg)
     Wnd *c;
 
     for (c = dlg->child; c; c = c->next)
-        if (!SDL_strcasecmp(c->cls->name, "Button") && (c->style & 0xf) == BS_DEFPUSHBUTTON &&
+        if (!strcasecmp(c->cls->name, "Button") && (c->style & 0xf) == BS_DEFPUSHBUTTON &&
             !(c->style & WS_DISABLED))
             return c;
     return NULL;
@@ -323,14 +323,14 @@ int dlg_is_dialog_message(Wnd *dlg, MSG *msg)
 
             if (n) {
                 SetFocus(n->h);
-                if (!SDL_strcasecmp(n->cls->name, "Edit"))
+                if (!strcasecmp(n->cls->name, "Edit"))
                     SendMessageA(n->h, EM_SETSEL, 0, -1);
             }
         }
         return 1;
     case VK_RETURN:
         {
-            Wnd *b = (!SDL_strcasecmp(t->cls->name, "Button") && (t->style & 0xf) <= BS_DEFPUSHBUTTON) ? t
+            Wnd *b = (!strcasecmp(t->cls->name, "Button") && (t->style & 0xf) <= BS_DEFPUSHBUTTON) ? t
                                                                                                          : default_button(dlg);
             int id = b ? b->id : IDOK;
 

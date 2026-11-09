@@ -21,9 +21,9 @@ static struct {
 
 static int music_wanted(void)
 {
-    const char *e = SDL_getenv("LEMMINGS_MUSIC");
+    const char *e = getenv("LEMMINGS_MUSIC");
 
-    return e ? SDL_atoi(e) != 0 : !port_harness;
+    return e ? atoi(e) != 0 : !port_harness;
 }
 
 static void notify_end(UINT how)
@@ -64,7 +64,7 @@ MMRESULT WINAPI midiOutGetDevCapsA(UINT_PTR dev, LPMIDIOUTCAPS caps, UINT size)
         return MMSYSERR_BADDEVICEID;
     memset(&c, 0, sizeof c);
     c.vDriverVersion = 0x100;
-    SDL_strlcpy(c.szPname, midi_backend_name(), sizeof c.szPname);
+    port_strlcpy(c.szPname, midi_backend_name(), sizeof c.szPname);
     c.wTechnology = MOD_SYNTH;
     c.wVoices = 64;
     c.wNotes = 64;
@@ -211,6 +211,6 @@ BOOL WINAPI mciGetErrorStringA(MCIERROR err, LPSTR buf, UINT size)
         break;
     }
     if (size)
-        SDL_strlcpy(buf, s, size);
+        port_strlcpy(buf, s, size);
     return TRUE;
 }

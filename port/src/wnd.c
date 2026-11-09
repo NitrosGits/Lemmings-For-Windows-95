@@ -39,7 +39,7 @@ WndClass *wnd_find_class(const char *name)
         return wnd_find_class(n);
     }
     for (i = 0; i < g_nclasses; i++)
-        if (!SDL_strcasecmp(g_classes[i]->name, name))
+        if (!strcasecmp(g_classes[i]->name, name))
             return g_classes[i];
     return NULL;
 }
@@ -51,7 +51,7 @@ ATOM WINAPI RegisterClassA(const WNDCLASSA *wc)
     if (!wc->lpszClassName || wnd_find_class(wc->lpszClassName) || g_nclasses >= 128)
         return 0;
     c = calloc(1, sizeof *c);
-    SDL_strlcpy(c->name, wc->lpszClassName, sizeof c->name);
+    port_strlcpy(c->name, wc->lpszClassName, sizeof c->name);
     c->wc = *wc;
     c->wc.lpszClassName = c->name;
     g_classes[g_nclasses++] = c;
@@ -118,7 +118,7 @@ LRESULT wnd_send(Wnd *w, UINT msg, WPARAM wp, LPARAM lp)
 
 static int is_control_class(Wnd *w, const char *name)
 {
-    return w->cls && !SDL_strcasecmp(w->cls->name, name);
+    return w->cls && !strcasecmp(w->cls->name, name);
 }
 
 static int border_of(DWORD style, DWORD exStyle, int child, Wnd *w)
@@ -597,82 +597,48 @@ void wnd_surface_resize(Wnd *w, int width, int height)
             memcpy(s->bits + (size_t)y * s->pitch, old + (size_t)y * ow * 4, (size_t)(ow < width ? ow : width) * 4);
         free(old);
     }
-    if (w->tex) {
-        SDL_DestroyTexture(w->tex);
-        w->tex = NULL;
-    }
     w->dirty = 1;
 }
 
 static void top_create_sdl(Wnd *w)
 {
-    SDL_WindowFlags flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    int width = w->rc.right - w->rc.left, height = w->rc.bottom - w->rc.top;
+    int width = w->rc.right - w->rc.left, height = w->rc.bottom - w->rc.top, flags = 0;
     char title[512];
-    SDL_PropertiesID props;
+    PlatWindow *owner = w->owner && w->owner != port_desktop ? w->owner->plat : NULL;
 
-    if (w == port_desktop || w->sdl)
+    if (w == port_desktop || w->plat)
         return;
-    if ((w->style & WS_CAPTION) != WS_CAPTION && !(w->style & WS_THICKFRAME))
-        flags |= SDL_WINDOW_BORDERLESS;
+    if ((w->style & WS_CAPTION) == WS_CAPTION || (w->style & WS_THICKFRAME))
+        flags |= PW_CAPTION;
     if (w->style & WS_THICKFRAME)
-        flags |= SDL_WINDOW_RESIZABLE;
+        flags |= PW_RESIZABLE;
     if (w->exStyle & WS_EX_TOPMOST)
-        flags |= SDL_WINDOW_ALWAYS_ON_TOP;
-    if (w->owner && w->owner != port_desktop && w->owner->sdl && (w->style & WS_POPUP) &&
-        (w->style & WS_CAPTION) != WS_CAPTION)
-        flags |= SDL_WINDOW_UTILITY;
+        flags |= PW_TOPMOST;
+    if (owner && (w->style & WS_POPUP))
+        flags |= (w->style & WS_CAPTION) == WS_CAPTION ? PW_DIALOG : PW_UTILITY;
     if (width < 1)
         width = 1;
     if (height < 1)
         height = 1;
     port_utf8(w->text ? w->text : "", title, sizeof title);
-    props = SDL_CreateProperties();
-    SDL_SetStringProperty(props, SDL_PROP_WINDOW_CREATE_TITLE_STRING, title);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_X_NUMBER, w->rc.left);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_Y_NUMBER, w->rc.top);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_WIDTH_NUMBER, width);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_HEIGHT_NUMBER, height);
-    SDL_SetNumberProperty(props, SDL_PROP_WINDOW_CREATE_FLAGS_NUMBER, (Sint64)flags);
-    w->sdl = SDL_CreateWindowWithProperties(props);
-    SDL_DestroyProperties(props);
-    if (!w->sdl)
-        port_fatal("SDL_CreateWindow: %s", SDL_GetError());
-    SDL_SetPointerProperty(SDL_GetWindowProperties(w->sdl), "port.wnd", w);
-    if (w->owner && w->owner != port_desktop && w->owner->sdl)
-        SDL_SetWindowParent(w->sdl, w->owner->sdl);
-    w->ren = SDL_CreateRenderer(w->sdl, NULL);
-    if (!w->ren)
-        port_fatal("SDL_CreateRenderer: %s", SDL_GetError());
-    SDL_SetRenderVSync(w->ren, 0);
+    w->plat = plat_window_create(w, w->rc.left, w->rc.top, width, height, flags, owner, title);
+    if (!w->plat)
+        port_fatal("Unable to create a window");
     wnd_surface_resize(w, width, height);
 }
 
 static void top_destroy_sdl(Wnd *w)
 {
-    if (w->tex)
-        SDL_DestroyTexture(w->tex);
-    if (w->ren)
-        SDL_DestroyRenderer(w->ren);
-    if (w->sdl)
-        SDL_DestroyWindow(w->sdl);
-    w->tex = NULL;
-    w->ren = NULL;
-    w->sdl = NULL;
-}
-
-Wnd *wnd_from_sdl(SDL_WindowID id)
-{
-    SDL_Window *s = SDL_GetWindowFromID(id);
-
-    return s ? (Wnd *)SDL_GetPointerProperty(SDL_GetWindowProperties(s), "port.wnd", NULL) : NULL;
+    if (w->plat)
+        plat_window_destroy(w->plat);
+    w->plat = NULL;
 }
 
 static void update_minmax(Wnd *w)
 {
     MINMAXINFO mm;
 
-    if (!w->sdl || !(w->style & WS_THICKFRAME))
+    if (!w->plat || !(w->style & WS_THICKFRAME))
         return;
     memset(&mm, 0, sizeof mm);
     mm.ptMaxSize.x = GetSystemMetrics(SM_CXSCREEN);
@@ -684,12 +650,12 @@ static void update_minmax(Wnd *w)
     if (mm.ptMinTrackSize.x != w->minW || mm.ptMinTrackSize.y != w->minH) {
         w->minW = mm.ptMinTrackSize.x;
         w->minH = mm.ptMinTrackSize.y;
-        SDL_SetWindowMinimumSize(w->sdl, w->minW, w->minH);
+        plat_window_set_minmax(w->plat, w->minW, w->minH, w->maxW, w->maxH);
     }
     if (mm.ptMaxTrackSize.x != w->maxW || mm.ptMaxTrackSize.y != w->maxH) {
         w->maxW = mm.ptMaxTrackSize.x;
         w->maxH = mm.ptMaxTrackSize.y;
-        SDL_SetWindowMaximumSize(w->sdl, w->maxW, w->maxH);
+        plat_window_set_minmax(w->plat, w->minW, w->minH, w->maxW, w->maxH);
     }
 }
 
@@ -801,17 +767,16 @@ static void unlink(Wnd *w)
 
 static void default_position(int *x, int *y, int w, int h)
 {
-    SDL_Rect b;
+    int bx, by, bw, bh;
     static int cascade;
 
-    if (!SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &b))
-        b = (SDL_Rect){0, 0, 1280, 800};
-    *x = b.x + (b.w - w) / 2 + cascade;
-    *y = b.y + (b.h - h) / 3 + cascade;
-    if (*x < b.x)
-        *x = b.x;
-    if (*y < b.y)
-        *y = b.y;
+    plat_usable_bounds(&bx, &by, &bw, &bh);
+    *x = bx + (bw - w) / 2 + cascade;
+    *y = by + (bh - h) / 3 + cascade;
+    if (*x < bx)
+        *x = bx;
+    if (*y < by)
+        *y = by;
     cascade = (cascade + 24) % 96;
 }
 
@@ -839,7 +804,7 @@ HWND WINAPI CreateWindowExA(DWORD exStyle, LPCSTR clsName, LPCSTR name, DWORD st
     w->style = style;
     w->exStyle = exStyle;
     w->state = SIZE_RESTORED;
-    w->text = SDL_strdup(name ? name : "");
+    w->text = strdup(name ? name : "");
     w->nextra = cls->wc.cbWndExtra + 8;
     w->extra = calloc(1, (size_t)w->nextra);
     if (style & WS_CHILD) {
@@ -921,7 +886,7 @@ static void free_tree(Wnd *w)
     w->destroyed = 1;
     if (port_capture == w) {
         port_capture = NULL;
-        SDL_CaptureMouse(false);
+        plat_capture_mouse(0);
     }
     if (port_focus == w)
         port_focus = NULL;
@@ -959,15 +924,15 @@ BOOL WINAPI DestroyWindow(HWND h)
         }
     }
     if (w->style & WS_VISIBLE) {
-        if (!w->parent && w->sdl)
-            SDL_HideWindow(w->sdl);
+        if (!w->parent && w->plat)
+            plat_window_show(w->plat, 0, 0);
         else
             invalidate_under(w);
     }
     if (!w->parent && port_active == w && w->owner && !w->owner->destroyed) {
         port_active = w->owner;
-        if (w->owner->sdl)
-            SDL_RaiseWindow(w->owner->sdl);
+        if (w->owner->plat)
+            plat_window_raise(w->owner->plat);
     }
     destroy_tree(w);
     if (w->destroyed)
@@ -992,8 +957,8 @@ BOOL WINAPI ShowWindow(HWND h, int cmd)
             return FALSE;
         SendMessageA(h, WM_SHOWWINDOW, FALSE, 0);
         w->style &= ~WS_VISIBLE;
-        if (!w->parent && w->sdl)
-            SDL_HideWindow(w->sdl);
+        if (!w->parent && w->plat)
+            plat_window_show(w->plat, 0, 0);
         else
             invalidate_under(w);
         if (port_focus && wnd_toplevel(port_focus) == wnd_toplevel(w) && !wnd_visible(port_focus))
@@ -1006,28 +971,28 @@ BOOL WINAPI ShowWindow(HWND h, int cmd)
             return FALSE;
         w->style |= WS_VISIBLE;
     }
-    if (!w->parent && w->sdl) {
+    if (!w->parent && w->plat) {
         switch (cmd) {
         case SW_MINIMIZE:
         case SW_SHOWMINIMIZED:
         case SW_SHOWMINNOACTIVE:
-            SDL_ShowWindow(w->sdl);
-            SDL_MinimizeWindow(w->sdl);
+            plat_window_show(w->plat, 1, 0);
+            plat_window_minimize(w->plat);
             wnd_top_state(w, SIZE_MINIMIZED);
             break;
         case SW_SHOWMAXIMIZED:
-            SDL_ShowWindow(w->sdl);
-            SDL_MaximizeWindow(w->sdl);
+            plat_window_show(w->plat, 1, 0);
+            plat_window_maximize(w->plat);
             break;
         case SW_RESTORE:
-            SDL_ShowWindow(w->sdl);
-            SDL_RestoreWindow(w->sdl);
+            plat_window_show(w->plat, 1, 0);
+            plat_window_restore(w->plat);
             wnd_top_state(w, SIZE_RESTORED);
             break;
         default:
-            SDL_ShowWindow(w->sdl);
+            plat_window_show(w->plat, 1, 0);
             if (cmd != SW_SHOWNA && cmd != SW_SHOWNOACTIVATE)
-                SDL_RaiseWindow(w->sdl);
+                plat_window_raise(w->plat);
             break;
         }
         if (!was) {
@@ -1081,13 +1046,10 @@ BOOL WINAPI SetWindowPos(HWND h, HWND after, int x, int y, int cx, int cy, UINT 
         if (w->parent && (w->style & WS_VISIBLE))
             invalidate_under(w);
         w->rc = (RECT){x, y, x + cx, y + cy};
-        if (!w->parent && w->sdl) {
-            if (sized) {
+        if (!w->parent && w->plat) {
+            if (sized)
                 wnd_surface_resize(w, cx, cy);
-                SDL_SetWindowSize(w->sdl, cx, cy);
-            }
-            if (moved)
-                SDL_SetWindowPosition(w->sdl, x, y);
+            plat_window_set_rect(w->plat, x, y, cx, cy);
         }
     }
     if (!(flags & SWP_NOZORDER) && w->parent && (after == HWND_TOP || after == NULL)) {
@@ -1187,9 +1149,9 @@ HWND WINAPI SetParent(HWND h, HWND parent)
     vis = (w->style & WS_VISIBLE) != 0;
     if (vis && old)
         invalidate_under(w);
-    if (!old && w->sdl) {
+    if (!old && w->plat) {
         if (vis)
-            SDL_HideWindow(w->sdl);
+            plat_window_show(w->plat, 0, 0);
     }
     unlink(w);
     if (p) {
@@ -1210,7 +1172,7 @@ HWND WINAPI SetParent(HWND h, HWND parent)
         w->owner = old ? wnd_toplevel(old) : NULL;
         top_create_sdl(w);
         if (vis) {
-            SDL_ShowWindow(w->sdl);
+            plat_window_show(w->plat, 1, 0);
             wnd_redraw_all(w);
             nc_paint_tree(w);
         }
@@ -1260,7 +1222,7 @@ HWND WINAPI FindWindowA(LPCSTR cls, LPCSTR name)
     for (w = port_top; w; w = w->next) {
         if (w->destroyed || w == port_desktop)
             continue;
-        if (cls && SDL_strcasecmp(w->cls->name, cls))
+        if (cls && strcasecmp(w->cls->name, cls))
             continue;
         if (name && strcmp(w->text, name))
             continue;
@@ -1494,7 +1456,7 @@ int WINAPI GetClassNameA(HWND h, LPSTR buf, int size)
 
     if (!w || size <= 0)
         return 0;
-    SDL_strlcpy(buf, w->cls->name, (size_t)size);
+    port_strlcpy(buf, w->cls->name, (size_t)size);
     return (int)strlen(buf);
 }
 
@@ -1516,7 +1478,7 @@ BOOL WINAPI EnableWindow(HWND h, BOOL enable)
         SendMessageA(h, WM_ENABLE, enable, 0);
         if (!enable && port_focus == w)
             SetFocus(NULL);
-        if (!w->parent && w->sdl)
+        if (!w->parent && w->plat)
             ;   /* disabled top-level windows just ignore input (msg.c) */
         else
             wnd_invalidate(w, NULL, 1);
@@ -1545,8 +1507,8 @@ HWND WINAPI SetFocus(HWND h)
     if (w && port_focus == w) {
         Wnd *top = wnd_toplevel(w);
 
-        if (top != port_active && top->sdl && wnd_visible(top))
-            SDL_RaiseWindow(top->sdl);
+        if (top != port_active && top->plat && wnd_visible(top))
+            plat_window_raise(top->plat);
         SendMessageA(w->h, WM_SETFOCUS, (WPARAM)(old && !old->destroyed ? old->h : NULL), 0);
     }
     return old && !old->destroyed ? old->h : NULL;
@@ -1566,8 +1528,8 @@ HWND WINAPI SetActiveWindow(HWND h)
 {
     Wnd *w = wnd_get(h), *old = port_active;
 
-    if (w && !w->parent && w->sdl)
-        SDL_RaiseWindow(w->sdl);
+    if (w && !w->parent && w->plat)
+        plat_window_raise(w->plat);
     if (w)
         port_active = wnd_toplevel(w);
     return old ? old->h : NULL;
@@ -1585,7 +1547,7 @@ HWND WINAPI SetCapture(HWND h)
 
     port_capture = w;
     if (w)
-        SDL_CaptureMouse(true);
+        plat_capture_mouse(1);
     if (old && old != w && !old->destroyed)
         SendMessageA(old->h, WM_CAPTURECHANGED, 0, (LPARAM)h);
     return old ? old->h : NULL;
@@ -1596,7 +1558,7 @@ BOOL WINAPI ReleaseCapture(void)
     Wnd *old = port_capture;
 
     port_capture = NULL;
-    SDL_CaptureMouse(false);
+    plat_capture_mouse(0);
     if (old && !old->destroyed)
         SendMessageA(old->h, WM_CAPTURECHANGED, 0, 0);
     return TRUE;
@@ -1730,7 +1692,6 @@ BOOL WINAPI ScrollWindow(HWND h, int dx, int dy, const RECT *rect, const RECT *c
 
 int WINAPI GetSystemMetrics(int index)
 {
-    SDL_Rect b;
 
     switch (index) {
     case SM_CXSCREEN:
@@ -1768,7 +1729,6 @@ int WINAPI GetSystemMetrics(int index)
     case SM_CYSIZE:
         return 18;
     }
-    (void)b;
     return 0;
 }
 
@@ -1812,18 +1772,18 @@ LRESULT WINAPI DefWindowProcA(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             const char *t = lp ? (const char *)lp : "";
 
             free(w->text);
-            w->text = SDL_strdup(t);
-            if (!w->parent && w->sdl) {
+            w->text = strdup(t);
+            if (!w->parent && w->plat) {
                 char u[512];
 
                 port_utf8(t, u, sizeof u);
-                SDL_SetWindowTitle(w->sdl, u);
+                plat_window_set_title(w->plat, u);
             }
         }
         return TRUE;
     case WM_GETTEXT:
         if (wp > 0) {
-            SDL_strlcpy((char *)lp, w->text, (size_t)wp);
+            port_strlcpy((char *)lp, w->text, (size_t)wp);
             return (LRESULT)strlen((char *)lp);
         }
         return 0;
@@ -1961,7 +1921,7 @@ BOOL WINAPI EndPaint(HWND h, const PAINTSTRUCT *ps)
 
 void wnd_init_desktop(void)
 {
-    SDL_Rect b;
+    int bx, by, bw, bh;
     Wnd *w;
 
     wnd_register_builtin("#32769", DefWindowProcA, 0, 0, 1);
@@ -1970,12 +1930,11 @@ void wnd_init_desktop(void)
     w->cls = wnd_find_class("#32769");
     w->proc = DefWindowProcA;
     w->style = WS_VISIBLE | WS_POPUP;
-    w->text = SDL_strdup("");
+    w->text = strdup("");
     w->nextra = 8;
     w->extra = calloc(1, 8);
-    if (!SDL_GetDisplayUsableBounds(SDL_GetPrimaryDisplay(), &b))
-        b = (SDL_Rect){0, 0, 1280, 800};
+    plat_usable_bounds(&bx, &by, &bw, &bh);
     /* a system caption above each window: count it out of the height */
-    w->rc = (RECT){b.x, b.y, b.x + b.w, b.y + b.h - 28};
+    w->rc = (RECT){bx, by, bx + bw, by + bh - 28};
     port_desktop = w;
 }

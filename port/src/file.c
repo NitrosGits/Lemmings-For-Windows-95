@@ -37,7 +37,7 @@ static void make_dirs(const char *path)
     char p[1100];
     char *s;
 
-    SDL_strlcpy(p, path, sizeof p);
+    port_strlcpy(p, path, sizeof p);
     for (s = p + 1; *s; s++) {
         if (*s == '/') {
             *s = 0;
@@ -52,11 +52,11 @@ void file_init(const char *dataDir, const char *prefDir)
 {
     size_t n;
 
-    SDL_strlcpy(g_data, dataDir, sizeof g_data);
+    port_strlcpy(g_data, dataDir, sizeof g_data);
     n = strlen(g_data);
     while (n > 1 && g_data[n - 1] == '/')
         g_data[--n] = 0;
-    SDL_strlcpy(g_pref, prefDir, sizeof g_pref);
+    port_strlcpy(g_pref, prefDir, sizeof g_pref);
     n = strlen(g_pref);
     while (n > 1 && g_pref[n - 1] == '/')
         g_pref[--n] = 0;
@@ -78,7 +78,7 @@ static void resolve(char *out, size_t size, const char *base, const char *rel)
     char comp[256];
     const char *p = rel;
 
-    SDL_strlcpy(out, base, size);
+    port_strlcpy(out, base, size);
     while (*p) {
         size_t n = 0, len;
 
@@ -102,7 +102,7 @@ static void resolve(char *out, size_t size, const char *base, const char *rel)
             snprintf(out + len, size - len, "/%s", comp);
             if (d) {
                 while ((e = readdir(d)) != NULL) {
-                    if (!SDL_strcasecmp(e->d_name, comp)) {
+                    if (!strcasecmp(e->d_name, comp)) {
                         snprintf(out + len, size - len, "/%s", e->d_name);
                         break;
                     }
@@ -133,7 +133,7 @@ int file_host_path(const char *win, char *out, size_t size, int forWrite)
             return 0;
         while (*p == '/')
             p++;
-        if (!SDL_strncasecmp(p, "WINLEMM", 7) && (p[7] == 0 || p[7] == '/')) {
+        if (!strncasecmp(p, "WINLEMM", 7) && (p[7] == 0 || p[7] == '/')) {
             memmove(rel, p + 7, strlen(p + 7) + 1);
             game = 1;
         } else {
@@ -141,7 +141,7 @@ int file_host_path(const char *win, char *out, size_t size, int forWrite)
             game = 0;
         }
     } else if (rel[0] == '/') {
-        SDL_strlcpy(out, win, size);    /* a host path (the layer's own) */
+        port_strlcpy(out, win, size);    /* a host path (the layer's own) */
         return 1;
     } else
         game = 1;
@@ -156,7 +156,7 @@ int file_host_path(const char *win, char *out, size_t size, int forWrite)
         snprintf(base, sizeof base, "%s/WINLEMM", g_drive);
         resolve(overlay, sizeof overlay, base, rel);
         if (forWrite || exists(overlay)) {
-            SDL_strlcpy(out, overlay, size);
+            port_strlcpy(out, overlay, size);
             return 1;
         }
     }
@@ -169,7 +169,7 @@ static void parent_dirs(const char *host)
     char p[1100];
     char *s;
 
-    SDL_strlcpy(p, host, sizeof p);
+    port_strlcpy(p, host, sizeof p);
     s = strrchr(p, '/');
     if (s && s != p) {
         *s = 0;
@@ -224,7 +224,7 @@ int port_unlink(const char *name)
 
 DWORD WINAPI GetCurrentDirectoryA(DWORD size, LPSTR buf)
 {
-    SDL_strlcpy(buf, GAME_DIR, size);
+    port_strlcpy(buf, GAME_DIR, size);
     return (DWORD)strlen(GAME_DIR);
 }
 
@@ -232,7 +232,7 @@ UINT WINAPI GetWindowsDirectoryA(LPSTR buf, UINT size)
 {
     char host[1100];
 
-    SDL_strlcpy(buf, "C:\\WINDOWS", size);
+    port_strlcpy(buf, "C:\\WINDOWS", size);
     if (file_host_path(buf, host, sizeof host, 1))
         make_dirs(host);
     return (UINT)strlen(buf);

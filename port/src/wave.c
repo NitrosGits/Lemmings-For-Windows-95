@@ -1,7 +1,7 @@
 /*
- * Sound effects: waveOut on SDL audio streams, and the mmio RIFF reader the
- * game loads its WAV files with. Every waveOut handle is an SDL audio stream
- * in the wave's own format, bound to one shared playback device; SDL converts.
+ * Sound effects: waveOut on the backend's audio streams, and the mmio RIFF reader the
+ * game loads its WAV files with. Every waveOut handle is a stream in the
+ * wave's own format, mixed to the default output; the backend converts.
  * The position is the bytes written minus the bytes still queued.
  *
  * LEMMINGS_SOUND=0 (the default under the test harness, as tools/wine/run.sh
@@ -10,11 +10,10 @@
 #include "port_internal.h"
 #include "port_res.h"
 
-static SDL_AudioDeviceID g_dev;
 static int g_audioOk = -1;
 
 typedef struct WaveOut {
-    SDL_AudioStream *stream;
+    PlatStream *stream;
     WAVEFORMATEX fmt;
     DWORD written;
     WAVEHDR *pending[16];
@@ -39,28 +38,22 @@ static int known(WAVEHDR *h)
 
 void wave_init(void)
 {
-    const char *e = SDL_getenv("LEMMINGS_SOUND");
+    const char *e = getenv("LEMMINGS_SOUND");
 
-    if (e ? !SDL_atoi(e) : port_harness) {
+    if (e ? !atoi(e) : port_harness) {
         g_audioOk = 0;
         return;
     }
-    if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
-        port_trace("audio: %s", SDL_GetError());
-        g_audioOk = 0;
-        return;
-    }
-    g_dev = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
-    g_audioOk = g_dev != 0;
+    g_audioOk = plat_audio_open();
     if (!g_audioOk)
-        port_trace("audio device: %s", SDL_GetError());
+        port_trace("no audio output");
 }
 
 void wave_quit(void)
 {
-    if (g_dev)
-        SDL_CloseAudioDevice(g_dev);
-    g_dev = 0;
+    if (g_audioOk > 0)
+        plat_audio_close();
+    g_audioOk = 0;
 }
 
 int port_audio_available(void)
@@ -68,10 +61,6 @@ int port_audio_available(void)
     return g_audioOk > 0;
 }
 
-SDL_AudioDeviceID port_audio_device(void)
-{
-    return g_dev;
-}
 
 UINT WINAPI waveOutGetNumDevs(void)
 {
@@ -87,7 +76,7 @@ MMRESULT WINAPI waveOutGetDevCapsA(UINT_PTR dev, LPWAVEOUTCAPS caps, UINT size)
     memset(&c, 0, sizeof c);
     c.wMid = 1;
     c.vDriverVersion = 0x100;
-    SDL_strlcpy(c.szPname, "SDL audio output", sizeof c.szPname);
+    port_strlcpy(c.szPname, "Default audio output", sizeof c.szPname);
     c.dwFormats = 0xfff;
     c.wChannels = 2;
     c.dwSupport = WAVECAPS_VOLUME | WAVECAPS_LRVOLUME;
@@ -103,7 +92,6 @@ static WaveOut *wo_get(HWAVEOUT h)
 MMRESULT WINAPI waveOutOpen(HWAVEOUT *out, UINT dev, LPCWAVEFORMATEX f, DWORD_PTR callback, DWORD_PTR instance,
                             DWORD flags)
 {
-    SDL_AudioSpec spec;
     WaveOut *w;
 
     if (g_audioOk <= 0)
@@ -115,15 +103,9 @@ MMRESULT WINAPI waveOutOpen(HWAVEOUT *out, UINT dev, LPCWAVEFORMATEX f, DWORD_PT
         return WAVERR_BADFORMAT;
     if (flags & WAVE_FORMAT_QUERY)
         return MMSYSERR_NOERROR;
-    spec.format = f->wBitsPerSample == 8 ? SDL_AUDIO_U8 : SDL_AUDIO_S16LE;
-    spec.channels = f->nChannels;
-    spec.freq = (int)f->nSamplesPerSec;
     w = calloc(1, sizeof *w);
-    w->stream = SDL_CreateAudioStream(&spec, NULL);
-    if (!w->stream || !SDL_BindAudioStream(g_dev, w->stream)) {
-        port_trace("audio stream: %s", SDL_GetError());
-        if (w->stream)
-            SDL_DestroyAudioStream(w->stream);
+    w->stream = plat_stream_create((int)f->nSamplesPerSec, f->wBitsPerSample, f->nChannels);
+    if (!w->stream) {
         free(w);
         return MMSYSERR_ERROR;
     }
@@ -139,7 +121,7 @@ MMRESULT WINAPI waveOutOpen(HWAVEOUT *out, UINT dev, LPCWAVEFORMATEX f, DWORD_PT
 
 static DWORD played(WaveOut *w)
 {
-    int q = SDL_GetAudioStreamQueued(w->stream);
+    int q = plat_stream_queued(w->stream);
 
     return q < 0 || (DWORD)q > w->written ? 0 : w->written - (DWORD)q;
 }
@@ -169,7 +151,7 @@ MMRESULT WINAPI waveOutClose(HWAVEOUT h)
 
     if (!w)
         return MMSYSERR_INVALHANDLE;
-    SDL_DestroyAudioStream(w->stream);
+    plat_stream_destroy(w->stream);
     if (w->notify)
         PostMessageA(w->notify, MM_WOM_CLOSE, (WPARAM)h, 0);
     port_handle_free(h);
@@ -216,11 +198,8 @@ MMRESULT WINAPI waveOutWrite(HWAVEOUT h, LPWAVEHDR hdr, UINT size)
     if (!known(hdr) || !(hdr->dwFlags & WHDR_PREPARED))
         return WAVERR_UNPREPARED;
     retire(h, w);
-    if (!SDL_PutAudioStreamData(w->stream, hdr->lpData, (int)hdr->dwBufferLength))
+    if (!plat_stream_put(w->stream, hdr->lpData, (int)hdr->dwBufferLength))
         return MMSYSERR_ERROR;
-    /* a buffer is a whole sound: without a flush SDL keeps its last samples back
-       for resampling, and the game would wait for the end of it for ever */
-    SDL_FlushAudioStream(w->stream);
     w->written += hdr->dwBufferLength;
     port_trace("waveOutWrite %u bytes (%u Hz, %u bits, %u channels)", (unsigned)hdr->dwBufferLength,
                (unsigned)w->fmt.nSamplesPerSec, (unsigned)w->fmt.wBitsPerSample, (unsigned)w->fmt.nChannels);
@@ -239,7 +218,7 @@ MMRESULT WINAPI waveOutReset(HWAVEOUT h)
 
     if (!w)
         return MMSYSERR_INVALHANDLE;
-    SDL_ClearAudioStream(w->stream);
+    plat_stream_clear(w->stream);
     w->written = 0;
     for (i = 0; i < w->npending; i++)
         w->pending[i]->dwFlags = (w->pending[i]->dwFlags & ~WHDR_INQUEUE) | WHDR_DONE;
@@ -278,7 +257,7 @@ MMRESULT WINAPI waveOutSetVolume(HWAVEOUT h, DWORD volume)
 
     if (!w)
         return MMSYSERR_INVALHANDLE;
-    SDL_SetAudioStreamGain(w->stream, (float)(volume & 0xffff) / 65535.0f);
+    plat_stream_gain(w->stream, (float)(volume & 0xffff) / 65535.0f);
     return MMSYSERR_NOERROR;
 }
 

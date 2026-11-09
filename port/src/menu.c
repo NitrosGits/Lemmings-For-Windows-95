@@ -15,8 +15,6 @@
 #define ITEM_H 17
 #define SEP_H 8
 
-void msg_handle_event(const SDL_Event *ev);
-Wnd *wnd_from_sdl(SDL_WindowID id);
 
 typedef struct PMenuItem {
     char *text;
@@ -43,7 +41,7 @@ static HMENU build(const PortResMenuItem *items, int n)
     m->n = n;
     m->items = calloc((size_t)(n ? n : 1), sizeof(PMenuItem));
     for (i = 0; i < n; i++) {
-        m->items[i].text = SDL_strdup(items[i].text ? items[i].text : "");
+        m->items[i].text = strdup(items[i].text ? items[i].text : "");
         m->items[i].id = (UINT)items[i].id;
         m->items[i].flags = (UINT)items[i].flags;
         if (items[i].flags & MF_POPUP)
@@ -58,7 +56,7 @@ HMENU WINAPI LoadMenuA(HINSTANCE inst, LPCSTR name)
 
     (void)inst;
     for (r = port_res_menus; r->items; r++) {
-        if (IS_INTRESOURCE(name) ? r->id == (int)(uintptr_t)name : (r->name && !SDL_strcasecmp(r->name, name)))
+        if (IS_INTRESOURCE(name) ? r->id == (int)(uintptr_t)name : (r->name && !strcasecmp(r->name, name)))
             return build(r->items, r->count);
     }
     return NULL;
@@ -241,7 +239,7 @@ int WINAPI GetMenuStringA(HMENU h, UINT id, LPSTR buf, int size, UINT flags)
 
     if (!it || size <= 0)
         return 0;
-    SDL_strlcpy(buf, it->text, (size_t)size);
+    port_strlcpy(buf, it->text, (size_t)size);
     return (int)strlen(buf);
 }
 
@@ -499,7 +497,7 @@ static int mnemonic(const char *s)
 {
     for (; *s; s++)
         if (*s == '&' && s[1] && s[1] != '&')
-            return SDL_tolower((unsigned char)s[1]);
+            return tolower((unsigned char)s[1]);
     return 0;
 }
 
@@ -517,130 +515,141 @@ static int next_enabled(Popup *p, int from, int dir)
     return -1;
 }
 
-/* Runs the menu of top's bar, item open; returns the command chosen or 0 */
+/* Runs the menu of top's bar, item open; returns the command chosen or 0. The
+   backend's input comes here first while it runs (port_input_hook). */
+static struct {
+    Wnd *top;
+    PMenu *bar;
+    Popup *p;
+    UINT cmd;
+    int done, downOnBar, quit;
+} g_mt;
+
+static int menu_input(const PortInput *in)
+{
+    Wnd *top = g_mt.top;
+    Popup *p = g_mt.p;
+    PMenu *bar = g_mt.bar;
+
+    switch (in->type) {
+    case PI_MOVE:
+    case PI_DOWN:
+    case PI_UP:
+        {
+            int fx = in->fx, fy = in->fy;
+            int bi = in->top == top ? menu_bar_hit(top, fx, fy) : -1;
+            int pi = in->top == top && p->m ? popup_item_at(p, fx, fy) : -1;
+            int inPopup = in->top == top && p->m && fx >= p->x && fx < p->x + p->w && fy >= p->y &&
+                          fy < p->y + p->hgt;
+
+            if (in->type == PI_MOVE) {
+                if (bi >= 0 && bi != g_openItem)
+                    open_item(top, p, bi);
+                else if (inPopup)
+                    popup_set_sel(top, p, pi);
+            } else if (in->type == PI_DOWN) {
+                if (bi >= 0) {
+                    if (bi == g_openItem && !g_mt.downOnBar)
+                        g_mt.done = 1;
+                    else
+                        open_item(top, p, bi);
+                    g_mt.downOnBar = 1;
+                } else if (!inPopup)
+                    g_mt.done = 1;
+            } else {
+                /* button up: on an item chooses it */
+                if (inPopup && pi >= 0) {
+                    PMenuItem *it = &p->m->items[pi];
+
+                    if (!(it->flags & (MF_GRAYED | MF_DISABLED)) && !it->sub) {
+                        g_mt.cmd = it->id;
+                        g_mt.done = 1;
+                    }
+                } else if (bi < 0 && !inPopup)
+                    g_mt.done = 1;
+                g_mt.downOnBar = 0;
+            }
+        }
+        return 1;
+    case PI_KEY:
+        switch (in->vk) {
+        case VK_ESCAPE:
+            g_mt.done = 1;
+            break;
+        case VK_LEFT:
+        case VK_RIGHT:
+            open_item(top, p, (g_openItem + (in->vk == VK_LEFT ? bar->n - 1 : 1)) % bar->n);
+            if (p->m)
+                popup_set_sel(top, p, next_enabled(p, -1, 1));
+            break;
+        case VK_UP:
+            popup_set_sel(top, p, next_enabled(p, p->sel, -1));
+            break;
+        case VK_DOWN:
+            popup_set_sel(top, p, next_enabled(p, p->sel, 1));
+            break;
+        case VK_RETURN:
+            if (p->m && p->sel >= 0 && !(p->m->items[p->sel].flags & (MF_GRAYED | MF_DISABLED))) {
+                g_mt.cmd = p->m->items[p->sel].id;
+                g_mt.done = 1;
+            }
+            break;
+        default:
+            if (((in->vk >= 'A' && in->vk <= 'Z') || (in->vk >= '0' && in->vk <= '9')) && p->m) {
+                int i;
+
+                for (i = 0; i < p->m->n; i++)
+                    if (mnemonic(p->m->items[i].text) == tolower(in->vk) &&
+                        !(p->m->items[i].flags & (MF_GRAYED | MF_DISABLED | MF_SEPARATOR))) {
+                        g_mt.cmd = p->m->items[i].id;
+                        g_mt.done = 1;
+                        break;
+                    }
+            }
+            break;
+        }
+        return 1;
+    case PI_FOCUS_LOST:
+        g_mt.done = 1;
+        return 0;
+    case PI_QUIT:
+        g_mt.done = 1;
+        g_mt.quit = 1;
+        return 1;
+    }
+    return 0;
+}
+
 int menu_track_bar(Wnd *top, int item, int byKey)
 {
     PMenu *bar = menu_get(top->menu);
     Popup p;
-    SDL_Event ev;
-    UINT cmd = 0;
-    int done = 0, downOnBar = !byKey;
+    UINT cmd;
 
-    if (!bar || item < 0 || (top->style & WS_DISABLED))
+    if (!bar || item < 0 || (top->style & WS_DISABLED) || port_input_hook)
         return 0;
     memset(&p, 0, sizeof p);
     p.sel = -1;
+    memset(&g_mt, 0, sizeof g_mt);
+    g_mt.top = top;
+    g_mt.bar = bar;
+    g_mt.p = &p;
+    g_mt.downOnBar = !byKey;
     port_modal_depth++;
     SendMessageA(top->h, WM_ENTERMENULOOP, 0, 0);
     SendMessageA(top->h, WM_INITMENU, (WPARAM)top->menu, 0);
     open_item(top, &p, item);
     if (byKey && p.m)
         popup_set_sel(top, &p, next_enabled(&p, -1, 1));
-    while (!done) {
+    port_input_hook = menu_input;
+    while (!g_mt.done && !top->destroyed) {
         msg_present();
         if (port_harness)
             harness_poll();
-        if (!SDL_WaitEventTimeout(&ev, 50))
-            continue;
-        switch (ev.type) {
-        case SDL_EVENT_MOUSE_MOTION:
-        case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        case SDL_EVENT_MOUSE_BUTTON_UP:
-            {
-                Wnd *w = wnd_from_sdl(ev.type == SDL_EVENT_MOUSE_MOTION ? ev.motion.windowID : ev.button.windowID);
-                int fx = (int)(ev.type == SDL_EVENT_MOUSE_MOTION ? ev.motion.x : ev.button.x);
-                int fy = (int)(ev.type == SDL_EVENT_MOUSE_MOTION ? ev.motion.y : ev.button.y);
-                int bi = w == top ? menu_bar_hit(top, fx, fy) : -1;
-                int pi = w == top && p.m ? popup_item_at(&p, fx, fy) : -1;
-                int inPopup = w == top && p.m && fx >= p.x && fx < p.x + p.w && fy >= p.y && fy < p.y + p.hgt;
-
-                if (ev.type == SDL_EVENT_MOUSE_MOTION) {
-                    if (bi >= 0 && bi != g_openItem)
-                        open_item(top, &p, bi);
-                    else if (inPopup)
-                        popup_set_sel(top, &p, pi);
-                    break;
-                }
-                if (ev.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
-                    if (bi >= 0) {
-                        if (bi == g_openItem && !downOnBar)
-                            done = 1;
-                        else
-                            open_item(top, &p, bi);
-                        downOnBar = 1;
-                    } else if (!inPopup)
-                        done = 1;
-                    break;
-                }
-                /* button up: on an item chooses it */
-                if (inPopup && pi >= 0) {
-                    PMenuItem *it = &p.m->items[pi];
-
-                    if (!(it->flags & (MF_GRAYED | MF_DISABLED)) && !it->sub) {
-                        cmd = it->id;
-                        done = 1;
-                    }
-                } else if (bi < 0 && !inPopup)
-                    done = 1;
-                downOnBar = 0;
-            }
-            break;
-        case SDL_EVENT_KEY_DOWN:
-            switch (ev.key.key) {
-            case SDLK_ESCAPE:
-                done = 1;
-                break;
-            case SDLK_LEFT:
-                open_item(top, &p, (g_openItem + bar->n - 1) % bar->n);
-                if (p.m)
-                    popup_set_sel(top, &p, next_enabled(&p, -1, 1));
-                break;
-            case SDLK_RIGHT:
-                open_item(top, &p, (g_openItem + 1) % bar->n);
-                if (p.m)
-                    popup_set_sel(top, &p, next_enabled(&p, -1, 1));
-                break;
-            case SDLK_UP:
-                popup_set_sel(top, &p, next_enabled(&p, p.sel, -1));
-                break;
-            case SDLK_DOWN:
-                popup_set_sel(top, &p, next_enabled(&p, p.sel, 1));
-                break;
-            case SDLK_RETURN:
-            case SDLK_KP_ENTER:
-                if (p.m && p.sel >= 0 && !(p.m->items[p.sel].flags & (MF_GRAYED | MF_DISABLED))) {
-                    cmd = p.m->items[p.sel].id;
-                    done = 1;
-                }
-                break;
-            default:
-                if (ev.key.key < 128 && p.m) {
-                    int i;
-
-                    for (i = 0; i < p.m->n; i++)
-                        if (mnemonic(p.m->items[i].text) == (int)ev.key.key &&
-                            !(p.m->items[i].flags & (MF_GRAYED | MF_DISABLED | MF_SEPARATOR))) {
-                            cmd = p.m->items[i].id;
-                            done = 1;
-                            break;
-                        }
-                }
-                break;
-            }
-            break;
-        case SDL_EVENT_WINDOW_FOCUS_LOST:
-            done = 1;
-            break;
-        case SDL_EVENT_QUIT:
-            done = 1;
-            SDL_PushEvent(&ev);
-            break;
-        default:
-            if (ev.type >= SDL_EVENT_WINDOW_FIRST && ev.type <= SDL_EVENT_WINDOW_LAST)
-                msg_handle_event(&ev);
-            break;
-        }
+        msg_pump(50);
     }
+    port_input_hook = NULL;
+    cmd = g_mt.cmd;
     top->overlay = NULL;
     free(p.s.bits);
     g_openItem = -1;
@@ -654,6 +663,8 @@ int menu_track_bar(Wnd *top, int item, int byKey)
             PostMessageA(top->h, WM_COMMAND, MAKEWPARAM(cmd, 0), 0);
     }
     port_modal_depth--;
+    if (g_mt.quit)
+        input_quit();
     return (int)cmd;
 }
 
@@ -670,7 +681,7 @@ int menu_syskey(Wnd *top, WPARAM ch)
         return 1;
     }
     for (i = 0; i < bar->n; i++)
-        if (mnemonic(bar->items[i].text) == SDL_tolower((int)ch)) {
+        if (mnemonic(bar->items[i].text) == tolower((int)ch)) {
             menu_track_bar(top, i, 1);
             return 1;
         }

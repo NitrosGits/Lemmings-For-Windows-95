@@ -1,6 +1,6 @@
 /*
  * Messages: the queue, PeekMessage/GetMessage/WaitMessage, timers, WM_PAINT,
- * SDL's events turned into Win32 input messages, keyboard translation and
+ * the backend's input turned into Win32 input messages, keyboard translation and
  * accelerators, and putting the windows' framebuffers on the screen.
  *
  * As in Win32, posted and input messages come first, then WM_TIMER, then
@@ -15,7 +15,6 @@
 #define WM_MOUSEWHEEL    0x020A
 
 Wnd *wnd_find_paint(void);
-Wnd *wnd_from_sdl(SDL_WindowID id);
 void wnd_top_moved(Wnd *w, int x, int y);
 void wnd_top_state(Wnd *w, int state);
 void wnd_init_desktop(void);
@@ -181,131 +180,30 @@ void msg_window_gone(Wnd *w)
     g_qn = n;
 }
 
-/* ---- Keys ---- */
-
-static int vk_of(SDL_Keycode k, SDL_Scancode sc)
-{
-    if (k >= 'a' && k <= 'z')
-        return (int)(k - 'a' + 'A');
-    if (sc >= SDL_SCANCODE_A && sc <= SDL_SCANCODE_Z)
-        return 'A' + (sc - SDL_SCANCODE_A);
-    if (sc >= SDL_SCANCODE_1 && sc <= SDL_SCANCODE_9)
-        return '1' + (sc - SDL_SCANCODE_1);
-    if (sc == SDL_SCANCODE_0)
-        return '0';
-    if (sc >= SDL_SCANCODE_F1 && sc <= SDL_SCANCODE_F12)
-        return VK_F1 + (sc - SDL_SCANCODE_F1);
-    if (sc >= SDL_SCANCODE_KP_1 && sc <= SDL_SCANCODE_KP_9)
-        return VK_NUMPAD0 + 1 + (sc - SDL_SCANCODE_KP_1);
-    switch (sc) {
-    case SDL_SCANCODE_KP_0: return VK_NUMPAD0;
-    case SDL_SCANCODE_KP_PLUS: return VK_ADD;
-    case SDL_SCANCODE_KP_MINUS: return VK_SUBTRACT;
-    case SDL_SCANCODE_KP_MULTIPLY: return VK_MULTIPLY;
-    case SDL_SCANCODE_KP_DIVIDE: return VK_DIVIDE;
-    case SDL_SCANCODE_KP_PERIOD: return VK_DECIMAL;
-    case SDL_SCANCODE_KP_ENTER: return VK_RETURN;
-    case SDL_SCANCODE_RETURN: return VK_RETURN;
-    case SDL_SCANCODE_ESCAPE: return VK_ESCAPE;
-    case SDL_SCANCODE_BACKSPACE: return VK_BACK;
-    case SDL_SCANCODE_TAB: return VK_TAB;
-    case SDL_SCANCODE_SPACE: return VK_SPACE;
-    case SDL_SCANCODE_LEFT: return VK_LEFT;
-    case SDL_SCANCODE_RIGHT: return VK_RIGHT;
-    case SDL_SCANCODE_UP: return VK_UP;
-    case SDL_SCANCODE_DOWN: return VK_DOWN;
-    case SDL_SCANCODE_HOME: return VK_HOME;
-    case SDL_SCANCODE_END: return VK_END;
-    case SDL_SCANCODE_PAGEUP: return VK_PRIOR;
-    case SDL_SCANCODE_PAGEDOWN: return VK_NEXT;
-    case SDL_SCANCODE_INSERT: return VK_INSERT;
-    case SDL_SCANCODE_DELETE: return VK_DELETE;
-    case SDL_SCANCODE_PAUSE: return VK_PAUSE;
-    case SDL_SCANCODE_LSHIFT: case SDL_SCANCODE_RSHIFT: return VK_SHIFT;
-    case SDL_SCANCODE_LCTRL: case SDL_SCANCODE_RCTRL: return VK_CONTROL;
-    case SDL_SCANCODE_LALT: case SDL_SCANCODE_RALT: return VK_MENU;
-    case SDL_SCANCODE_MINUS: return 0xBD;
-    case SDL_SCANCODE_EQUALS: return 0xBB;
-    case SDL_SCANCODE_COMMA: return 0xBC;
-    case SDL_SCANCODE_PERIOD: return 0xBE;
-    case SDL_SCANCODE_SLASH: return 0xBF;
-    case SDL_SCANCODE_SEMICOLON: return 0xBA;
-    case SDL_SCANCODE_GRAVE: return 0xC0;
-    case SDL_SCANCODE_LEFTBRACKET: return 0xDB;
-    case SDL_SCANCODE_BACKSLASH: return 0xDC;
-    case SDL_SCANCODE_RIGHTBRACKET: return 0xDD;
-    case SDL_SCANCODE_APOSTROPHE: return 0xDE;
-    default: return 0;
-    }
-}
-
-static SDL_Scancode scancode_of(int vk)
-{
-    if (vk >= 'A' && vk <= 'Z')
-        return (SDL_Scancode)(SDL_SCANCODE_A + vk - 'A');
-    if (vk >= '1' && vk <= '9')
-        return (SDL_Scancode)(SDL_SCANCODE_1 + vk - '1');
-    if (vk >= VK_F1 && vk <= VK_F12)
-        return (SDL_Scancode)(SDL_SCANCODE_F1 + vk - VK_F1);
-    if (vk > VK_NUMPAD0 && vk <= VK_NUMPAD9)
-        return (SDL_Scancode)(SDL_SCANCODE_KP_1 + vk - VK_NUMPAD0 - 1);
-    switch (vk) {
-    case '0': return SDL_SCANCODE_0;
-    case VK_NUMPAD0: return SDL_SCANCODE_KP_0;
-    case VK_LEFT: return SDL_SCANCODE_LEFT;
-    case VK_RIGHT: return SDL_SCANCODE_RIGHT;
-    case VK_UP: return SDL_SCANCODE_UP;
-    case VK_DOWN: return SDL_SCANCODE_DOWN;
-    case VK_RETURN: return SDL_SCANCODE_RETURN;
-    case VK_ESCAPE: return SDL_SCANCODE_ESCAPE;
-    case VK_SPACE: return SDL_SCANCODE_SPACE;
-    case VK_TAB: return SDL_SCANCODE_TAB;
-    case VK_BACK: return SDL_SCANCODE_BACKSPACE;
-    }
-    return SDL_SCANCODE_UNKNOWN;
-}
+/* ---- Input state ---- */
 
 int port_key_down(int vk)
 {
-    const bool *ks = SDL_GetKeyboardState(NULL);
-    SDL_Keymod mod = SDL_GetModState();
-
-    switch (vk) {
-    case VK_SHIFT:
-        return (mod & SDL_KMOD_SHIFT) != 0;
-    case VK_CONTROL:
-        return (mod & SDL_KMOD_CTRL) != 0;
-    case VK_MENU:
-        return (mod & SDL_KMOD_ALT) != 0;
-    }
-    {
-        SDL_Scancode sc = scancode_of(vk);
-
-        return sc != SDL_SCANCODE_UNKNOWN && ks[sc];
-    }
+    return plat_key_down(vk);
 }
 
 SHORT WINAPI GetAsyncKeyState(int vk)
 {
-    SDL_MouseButtonFlags b;
-    float x, y;
+    unsigned b;
 
-    SDL_PumpEvents();
     if (port_harness)
         return harness_key(vk) ? (SHORT)0x8001 : 0;
     if (vk == VK_LBUTTON || vk == VK_RBUTTON || vk == VK_MBUTTON) {
-        b = SDL_GetGlobalMouseState(&x, &y);
-        if (vk == VK_LBUTTON && (b & SDL_BUTTON_LMASK)) {
-            SDL_Delay(1);       /* the dock drag polls this in a tight loop */
+        b = plat_mouse_buttons();
+        if (vk == VK_LBUTTON && (b & 1)) {
+            plat_sleep(1);      /* the dock drag polls this in a tight loop */
             return (SHORT)0x8000;
         }
-        if (vk == VK_RBUTTON && (b & SDL_BUTTON_RMASK))
-            return (SHORT)0x8000;
-        if (vk == VK_MBUTTON && (b & SDL_BUTTON_MMASK))
+        if ((vk == VK_RBUTTON && (b & 2)) || (vk == VK_MBUTTON && (b & 4)))
             return (SHORT)0x8000;
         return 0;
     }
-    return port_key_down(vk) ? (SHORT)0x8000 : 0;
+    return plat_key_down(vk) ? (SHORT)0x8000 : 0;
 }
 
 SHORT WINAPI GetKeyState(int vk)
@@ -315,21 +213,20 @@ SHORT WINAPI GetKeyState(int vk)
 
 BOOL WINAPI GetCursorPos(LPPOINT pt)
 {
-    float x, y;
+    int x, y;
 
     if (port_harness && harness_cursor(pt))
         return TRUE;
-    SDL_PumpEvents();
-    SDL_GetGlobalMouseState(&x, &y);
-    pt->x = (LONG)x;
-    pt->y = (LONG)y;
+    plat_mouse_pos(&x, &y);
+    pt->x = x;
+    pt->y = y;
     return TRUE;
 }
 
 BOOL WINAPI SetCursorPos(int x, int y)
 {
     if (!port_harness)
-        SDL_WarpMouseGlobal((float)x, (float)y);
+        plat_set_mouse_pos(x, y);
     return TRUE;
 }
 
@@ -354,14 +251,28 @@ int WINAPI ShowCursor(BOOL show)
     static int count;
 
     count += show ? 1 : -1;
-    if (count >= 0)
-        SDL_ShowCursor();
-    else
-        SDL_HideCursor();
+    plat_cursor_show(count >= 0);
     return count;
 }
 
-/* ---- SDL events to messages ---- */
+/* ---- Input from the backend to messages ---- */
+
+int (*port_input_hook)(const PortInput *in);
+
+static int hooked(int type, Wnd *top, int fx, int fy, int button, int vk)
+{
+    PortInput in;
+
+    if (!port_input_hook)
+        return 0;
+    in.type = type;
+    in.top = top;
+    in.fx = fx;
+    in.fy = fy;
+    in.button = button;
+    in.vk = vk;
+    return port_input_hook(&in);
+}
 
 static Wnd *main_window(void)
 {
@@ -378,20 +289,20 @@ static int top_enabled(Wnd *top)
     return top && !(top->style & WS_DISABLED);
 }
 
-static WPARAM mouse_keys(SDL_MouseButtonFlags b)
+static WPARAM mouse_keys(unsigned b)
 {
     WPARAM k = 0;
-    SDL_Keymod mod = SDL_GetModState();
+    int mods = plat_mods();
 
-    if (b & SDL_BUTTON_LMASK)
+    if (b & 1)
         k |= MK_LBUTTON;
-    if (b & SDL_BUTTON_RMASK)
+    if (b & 2)
         k |= MK_RBUTTON;
-    if (b & SDL_BUTTON_MMASK)
+    if (b & 4)
         k |= MK_MBUTTON;
-    if (mod & SDL_KMOD_SHIFT)
+    if (mods & PM_SHIFT)
         k |= MK_SHIFT;
-    if (mod & SDL_KMOD_CTRL)
+    if (mods & PM_CTRL)
         k |= MK_CONTROL;
     return k;
 }
@@ -421,7 +332,7 @@ static LPARAM client_lparam(Wnd *w, int fx, int fy)
     return MAKELPARAM((WORD)(short)(fx - r.left), (WORD)(short)(fy - r.top));
 }
 
-static void mouse_event(Wnd *top, int fx, int fy, UINT down, UINT up, int clicks, SDL_MouseButtonFlags b)
+static void mouse_event(Wnd *top, int fx, int fy, UINT down, UINT up, int clicks, unsigned b)
 {
     Wnd *w;
     int hit = HTCLIENT;
@@ -444,8 +355,8 @@ static void mouse_event(Wnd *top, int fx, int fy, UINT down, UINT up, int clicks
                 Wnd *d;
 
                 for (d = port_top; d; d = d->next)
-                    if (d->owner == top && wnd_visible(d) && d->sdl)
-                        SDL_RaiseWindow(d->sdl);
+                    if (d->owner == top && wnd_visible(d) && d->plat)
+                        plat_window_raise(d->plat);
             }
             return;
         }
@@ -461,7 +372,7 @@ static void mouse_event(Wnd *top, int fx, int fy, UINT down, UINT up, int clicks
         return;
     }
     if (down) {
-        if (port_active != top && top->sdl) {
+        if (port_active != top && top->plat) {
             port_active = top;
             SendMessageA(top->h, WM_NCACTIVATE, TRUE, 0);
         }
@@ -477,26 +388,58 @@ static void mouse_event(Wnd *top, int fx, int fy, UINT down, UINT up, int clicks
         msg_post(w->h, up, mouse_keys(b), client_lparam(w, fx, fy));
 }
 
-static void key_event(const SDL_KeyboardEvent *k)
+void input_mouse_move(Wnd *top, int fx, int fy, int injected)
 {
-    int vk = vk_of(k->key, k->scancode);
+    if (!top || top->destroyed || (port_harness && !injected))
+        return;
+    if (hooked(PI_MOVE, top, fx, fy, 0, 0))
+        return;
+    mouse_event(top, fx, fy, 0, 0, 0, injected ? 0 : plat_mouse_buttons());
+}
+
+void input_mouse(Wnd *top, int fx, int fy, int button, int down, int clicks, int injected)
+{
+    static const UINT downs[3] = {WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN};
+    static const UINT ups[3] = {WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP};
+    unsigned b;
+
+    if (!top || top->destroyed || (port_harness && !injected) || button < 0 || button > 2)
+        return;
+    if (hooked(down ? PI_DOWN : PI_UP, top, fx, fy, button, 0))
+        return;
+    b = injected ? (down ? 1u << button : 0) : plat_mouse_buttons();
+    mouse_event(top, fx, fy, down ? downs[button] : 0, down ? 0 : ups[button], clicks, b);
+}
+
+void input_wheel(int delta, int injected)
+{
+    if (port_harness && !injected)
+        return;
+    if (port_focus)
+        msg_post(port_focus->h, WM_MOUSEWHEEL, MAKEWPARAM(0, (short)delta), 0);
+}
+
+void input_key(int vk, int scancode, int down, int repeat, int mods, int injected)
+{
     Wnd *w = port_focus && !port_focus->destroyed ? port_focus : port_active;
-    SDL_Keymod mod = k->mod;
-    int alt = (mod & SDL_KMOD_ALT) != 0;
+    int alt = (mods & PM_ALT) != 0;
     LPARAM lp;
     UINT m;
 
+    if (port_harness && !injected)
+        return;
+    if (down && hooked(PI_KEY, NULL, 0, 0, 0, vk))
+        return;
     if (!vk || !w || w->destroyed)
         return;
     if (!top_enabled(wnd_toplevel(w)))
         return;
-    if (mod & SDL_KMOD_GUI)
+    if (mods & PM_CMD)
         return;                 /* Cmd+key belongs to the system */
-    lp = 1 | ((LPARAM)(k->scancode & 0xff) << 16) | ((mod & SDL_KMOD_SHIFT) ? 1L << 24 : 0) |
-         ((mod & SDL_KMOD_CAPS) ? 1L << 25 : 0) | ((mod & SDL_KMOD_CTRL) ? 1L << 26 : 0) |
-         (alt ? 1L << 29 : 0);
-    if (k->down) {
-        if (k->repeat)
+    lp = 1 | ((LPARAM)(scancode & 0xff) << 16) | ((mods & PM_SHIFT) ? 1L << 24 : 0) |
+         ((mods & PM_CAPS) ? 1L << 25 : 0) | ((mods & PM_CTRL) ? 1L << 26 : 0) | (alt ? 1L << 29 : 0);
+    if (down) {
+        if (repeat)
             lp |= 1L << 30;
         m = alt || vk == VK_F10 ? WM_SYSKEYDOWN : WM_KEYDOWN;
     } else {
@@ -506,214 +449,102 @@ static void key_event(const SDL_KeyboardEvent *k)
     msg_post(w->h, m, (WPARAM)vk, lp);
 }
 
-static void window_event(const SDL_WindowEvent *e)
+void input_window_moved(Wnd *w, int x, int y)
 {
-    Wnd *w = wnd_from_sdl(e->windowID);
+    if (w && !w->destroyed)
+        wnd_top_moved(w, x, y);
+}
 
+void input_window_resized(Wnd *w, int cw, int ch)
+{
+    if (w && !w->destroyed)
+        wnd_top_resized(w, cw, ch);
+}
+
+void input_window_state(Wnd *w, int state)
+{
+    if (w && !w->destroyed)
+        wnd_top_state(w, state);
+}
+
+void input_window_exposed(Wnd *w)
+{
+    if (w && !w->destroyed)
+        w->dirty = 1;
+}
+
+void input_window_focus(Wnd *w)
+{
     if (!w || w->destroyed)
         return;
-    switch (e->type) {
-    case SDL_EVENT_WINDOW_MOVED:
-        wnd_top_moved(w, e->data1, e->data2);
-        break;
-    case SDL_EVENT_WINDOW_RESIZED:
-        wnd_top_resized(w, e->data1, e->data2);
-        break;
-    case SDL_EVENT_WINDOW_MINIMIZED:
-        wnd_top_state(w, SIZE_MINIMIZED);
-        break;
-    case SDL_EVENT_WINDOW_MAXIMIZED:
-        wnd_top_state(w, SIZE_MAXIMIZED);
-        break;
-    case SDL_EVENT_WINDOW_RESTORED:
-        wnd_top_state(w, SIZE_RESTORED);
-        break;
-    case SDL_EVENT_WINDOW_EXPOSED:
-        w->dirty = 1;
-        break;
-    case SDL_EVENT_WINDOW_SHOWN:
-        {
-            /* the system may have placed it differently from where it was asked to */
-            int x, y, cw, ch;
-
-            if (SDL_GetWindowPosition(w->sdl, &x, &y) && (x != w->rc.left || y != w->rc.top)) {
-                port_trace("window %p shown at %d,%d, not %d,%d", (void *)w->h, x, y, (int)w->rc.left, (int)w->rc.top);
-                wnd_top_moved(w, x, y);
-            }
-            if (SDL_GetWindowSize(w->sdl, &cw, &ch))
-                wnd_top_resized(w, cw, ch);
-        }
-        break;
-    case SDL_EVENT_WINDOW_FOCUS_GAINED:
-        if (!g_appActive) {
-            Wnd *t;
-
-            g_appActive = 1;
-            for (t = port_top; t; t = t->next)
-                if (!t->destroyed)
-                    SendMessageA(t->h, WM_ACTIVATEAPP, TRUE, 0);
-        }
-        if (port_active != w) {
-            Wnd *old = port_active;
-
-            port_active = w;
-            if (old && !old->destroyed)
-                SendMessageA(old->h, WM_NCACTIVATE, FALSE, 0);
-            SendMessageA(w->h, WM_NCACTIVATE, TRUE, 0);
-            SendMessageA(w->h, WM_ACTIVATE, 1, (LPARAM)(old ? old->h : NULL));
-        }
-        if (!port_focus || wnd_toplevel(port_focus) != w)
-            if (top_enabled(w) && !w->dlg)
-                SetFocus(w->h);
-        break;
-    case SDL_EVENT_WINDOW_FOCUS_LOST:
-        break;
-    case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-        if (top_enabled(w))
-            msg_post(w->h, WM_SYSCOMMAND, SC_CLOSE, 0);
-        break;
-    default:
-        break;
-    }
-}
-
-static void check_app_active(void)
-{
-    if (g_appActive && !SDL_GetKeyboardFocus()) {
+    if (!g_appActive) {
         Wnd *t;
 
-        g_appActive = 0;
+        g_appActive = 1;
         for (t = port_top; t; t = t->next)
             if (!t->destroyed)
-                SendMessageA(t->h, WM_ACTIVATEAPP, FALSE, 0);
+                SendMessageA(t->h, WM_ACTIVATEAPP, TRUE, 0);
     }
+    if (port_active != w) {
+        Wnd *old = port_active;
+
+        port_active = w;
+        if (old && !old->destroyed)
+            SendMessageA(old->h, WM_NCACTIVATE, FALSE, 0);
+        SendMessageA(w->h, WM_NCACTIVATE, TRUE, 0);
+        SendMessageA(w->h, WM_ACTIVATE, 1, (LPARAM)(old ? old->h : NULL));
+    }
+    if (!port_focus || wnd_toplevel(port_focus) != w)
+        if (top_enabled(w) && !w->dlg)
+            SetFocus(w->h);
 }
 
-/* the harness's own SDL input events (sclick, skey): real input otherwise ignored */
-#define INJECTED 0x504f5254u
-
-void msg_handle_event(const SDL_Event *ev)
+void input_window_close(Wnd *w)
 {
-    Wnd *top;
-    int live = !port_harness || ev->motion.which == INJECTED;
+    if (w && !w->destroyed && top_enabled(w))
+        msg_post(w->h, WM_SYSCOMMAND, SC_CLOSE, 0);
+}
 
-    switch (ev->type) {
-    case SDL_EVENT_QUIT:
-        {
-            Wnd *m = main_window();
+void input_app_deactivated(void)
+{
+    Wnd *t;
 
-            if (m && top_enabled(m))
-                msg_post(m->h, WM_CLOSE, 0, 0);
-        }
-        break;
-    case SDL_EVENT_MOUSE_MOTION:
-        top = wnd_from_sdl(ev->motion.windowID);
-        if (top && live)
-            mouse_event(top, (int)ev->motion.x, (int)ev->motion.y, 0, 0, 0, ev->motion.state);
-        break;
-    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-    case SDL_EVENT_MOUSE_BUTTON_UP:
-        top = wnd_from_sdl(ev->button.windowID);
-        if (top && (!port_harness || ev->button.which == INJECTED)) {
-            int d = ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
-            UINT dn = 0, up = 0;
-            SDL_MouseButtonFlags b = port_harness ? (d ? SDL_BUTTON_MASK(ev->button.button) : 0)
-                                                  : SDL_GetMouseState(NULL, NULL);
+    hooked(PI_FOCUS_LOST, NULL, 0, 0, 0, 0);
+    if (!g_appActive)
+        return;
+    g_appActive = 0;
+    for (t = port_top; t; t = t->next)
+        if (!t->destroyed)
+            SendMessageA(t->h, WM_ACTIVATEAPP, FALSE, 0);
+}
 
-            switch (ev->button.button) {
-            case SDL_BUTTON_LEFT:
-                dn = WM_LBUTTONDOWN;
-                up = WM_LBUTTONUP;
-                break;
-            case SDL_BUTTON_RIGHT:
-                dn = WM_RBUTTONDOWN;
-                up = WM_RBUTTONUP;
-                break;
-            case SDL_BUTTON_MIDDLE:
-                dn = WM_MBUTTONDOWN;
-                up = WM_MBUTTONUP;
-                break;
-            default:
-                return;
-            }
-            mouse_event(top, (int)ev->button.x, (int)ev->button.y, d ? dn : 0, d ? 0 : up, ev->button.clicks, b);
-        }
-        break;
-    case SDL_EVENT_MOUSE_WHEEL:
-        if (port_focus && !port_harness)
-            msg_post(port_focus->h, WM_MOUSEWHEEL, MAKEWPARAM(0, (short)(ev->wheel.y * 120)), 0);
-        break;
-    case SDL_EVENT_KEY_DOWN:
-    case SDL_EVENT_KEY_UP:
-        if (!port_harness || ev->key.which == INJECTED)
-            key_event(&ev->key);
-        break;
-    default:
-        if (ev->type >= SDL_EVENT_WINDOW_FIRST && ev->type <= SDL_EVENT_WINDOW_LAST)
-            window_event(&ev->window);
-        break;
-    }
+void input_quit(void)
+{
+    Wnd *m = main_window();
+
+    if (hooked(PI_QUIT, NULL, 0, 0, 0, 0))
+        return;
+    if (m && top_enabled(m))
+        msg_post(m->h, WM_CLOSE, 0, 0);
 }
 
 int msg_pump(int wait)
 {
-    SDL_Event ev;
-    int n = 0;
-
-    if (wait > 0 ? SDL_WaitEventTimeout(&ev, wait) : SDL_PollEvent(&ev)) {
-        do {
-            msg_handle_event(&ev);
-            n++;
-        } while (SDL_PollEvent(&ev));
-    }
-    check_app_active();
-    return n;
+    return plat_pump(wait);
 }
 
 /* ---- Presenting ---- */
-
-static void present(Wnd *w)
-{
-    int ow, oh;
-
-    if (!w->sdl || !w->ren || !wnd_visible(w))
-        return;
-    if (!w->tex) {
-        w->tex = SDL_CreateTexture(w->ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, w->fb.w, w->fb.h);
-        if (!w->tex)
-            return;
-        SDL_SetTextureScaleMode(w->tex, SDL_SCALEMODE_NEAREST);
-        SDL_SetRenderLogicalPresentation(w->ren, w->fb.w, w->fb.h, SDL_LOGICAL_PRESENTATION_STRETCH);
-    }
-    SDL_UpdateTexture(w->tex, NULL, w->fb.bits, w->fb.pitch);
-    SDL_RenderClear(w->ren);
-    SDL_RenderTexture(w->ren, w->tex, NULL, NULL);
-    if (w->overlay) {
-        SDL_Texture *t = SDL_CreateTexture(w->ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STATIC,
-                                           w->overlay->w, w->overlay->h);
-
-        if (t) {
-            SDL_FRect d = {(float)w->overlayX, (float)w->overlayY, (float)w->overlay->w, (float)w->overlay->h};
-
-            SDL_SetTextureScaleMode(t, SDL_SCALEMODE_NEAREST);
-            SDL_UpdateTexture(t, NULL, w->overlay->bits, w->overlay->pitch);
-            SDL_RenderTexture(w->ren, t, NULL, &d);
-            SDL_DestroyTexture(t);
-        }
-    }
-    (void)ow;
-    (void)oh;
-    SDL_RenderPresent(w->ren);
-    w->dirty = 0;
-}
 
 void msg_present(void)
 {
     Wnd *w;
 
-    for (w = port_top; w; w = w->next)
-        if (w->dirty && !w->destroyed)
-            present(w);
+    for (w = port_top; w; w = w->next) {
+        if (!w->dirty || w->destroyed || !w->plat || !wnd_visible(w))
+            continue;
+        plat_window_present(w->plat, &w->fb, w->overlay, w->overlayX, w->overlayY);
+        w->dirty = 0;
+    }
 }
 
 /* ---- Getting messages ---- */
@@ -854,13 +685,10 @@ BOOL WINAPI TranslateMessage(const MSG *msg)
         if (ctrl && vk >= 'A' && vk <= 'Z')
             ch = vk - 'A' + 1;
         else if (sc) {
-            SDL_Keymod mod = (shift ? SDL_KMOD_SHIFT : 0) | (caps ? SDL_KMOD_CAPS : 0);
-            SDL_Keycode k = SDL_GetKeyFromScancode((SDL_Scancode)sc, mod, false);
+            int k = plat_key_char(sc, (shift ? PM_SHIFT : 0) | (caps ? PM_CAPS : 0));
 
-            if (k >= 32 && k < 127)
-                ch = (int)k;
-            else if (k >= 0xa0 && k < 0x100)
-                ch = (int)k;
+            if ((k >= 32 && k < 127) || (k >= 0xa0 && k < 0x100))
+                ch = k;
         }
         break;
     }
@@ -880,7 +708,7 @@ HACCEL WINAPI LoadAcceleratorsA(HINSTANCE inst, LPCSTR name)
 
     (void)inst;
     for (t = port_res_accels; t->accels; t++) {
-        if (IS_INTRESOURCE(name) ? t->id == (int)(uintptr_t)name : (t->name && !SDL_strcasecmp(t->name, name)))
+        if (IS_INTRESOURCE(name) ? t->id == (int)(uintptr_t)name : (t->name && !strcasecmp(t->name, name)))
             return (HACCEL)port_handle_new(H_ACCEL, (void *)t);
     }
     return NULL;

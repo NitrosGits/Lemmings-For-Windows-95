@@ -1,0 +1,103 @@
+/*
+ * What the Win32 layer needs from the operating system: one backend per
+ * platform implements this (port/macos/plat_cocoa.m). Everything above it -
+ * windows, messages, GDI, dialogs, files, registry - is shared.
+ *
+ * Coordinates are screen points, origin at the top left of the main display;
+ * a window's rectangle is its content (the system's frame and caption are
+ * outside it). Backends report input and window changes through the input_*
+ * functions (msg.c).
+ */
+#ifndef PORT_PLAT_H
+#define PORT_PLAT_H
+
+#include <stdint.h>
+
+typedef struct PlatWindow PlatWindow;
+typedef struct PlatStream PlatStream;
+struct Wnd;
+struct Surface;
+
+/* ---- The application ---- */
+void plat_init(void);
+void plat_quit(void);
+uint64_t plat_ticks(void);                  /* milliseconds */
+void plat_sleep(uint32_t ms);
+char *plat_pref_dir(void);                  /* malloc'd, ends in '/' */
+char *plat_base_dir(void);                  /* the program's folder, ends in '/' */
+uint64_t plat_ram_bytes(void);
+int plat_open_url(const char *url);
+void plat_usable_bounds(int *x, int *y, int *w, int *h);
+/* a message box: type as MessageBox's; returns IDOK, IDCANCEL, IDYES or IDNO */
+int plat_message_box(PlatWindow *owner, const char *text, const char *caption, unsigned type);
+
+/* ---- Windows ---- */
+enum {
+    PW_CAPTION = 1,                         /* a system frame and caption */
+    PW_RESIZABLE = 2,
+    PW_TOPMOST = 4,
+    PW_UTILITY = 8,                         /* a tool window or dialog of its owner */
+    PW_DIALOG = 16
+};
+PlatWindow *plat_window_create(struct Wnd *w, int x, int y, int cw, int ch, int flags, PlatWindow *owner,
+                               const char *title);
+void plat_window_destroy(PlatWindow *p);
+void plat_window_show(PlatWindow *p, int show, int activate);
+void plat_window_minimize(PlatWindow *p);
+void plat_window_maximize(PlatWindow *p);
+void plat_window_restore(PlatWindow *p);
+void plat_window_raise(PlatWindow *p);
+void plat_window_set_title(PlatWindow *p, const char *title);
+void plat_window_set_rect(PlatWindow *p, int x, int y, int cw, int ch);
+void plat_window_set_minmax(PlatWindow *p, int minw, int minh, int maxw, int maxh);
+/* shows the framebuffer, and over it the overlay (an open menu) at ox, oy */
+void plat_window_present(PlatWindow *p, const struct Surface *fb, const struct Surface *overlay, int ox, int oy);
+int plat_window_is_key(PlatWindow *p);
+int plat_app_active(void);
+
+/* ---- Events and input state ---- */
+int plat_pump(int timeout_ms);              /* OS events into input_* calls; returns how many */
+int plat_key_down(int vk);
+int plat_mods(void);                        /* PM_* below */
+unsigned plat_mouse_buttons(void);          /* 1 left, 2 right, 4 middle */
+void plat_mouse_pos(int *x, int *y);
+void plat_set_mouse_pos(int x, int y);
+void plat_capture_mouse(int on);
+/* the character a key makes with these modifiers (TranslateMessage), 0 if none */
+int plat_key_char(int scancode, int mods);
+/* the harness's own input, as if from the user */
+void plat_inject_mouse(PlatWindow *p, int x, int y, int button, int down, int clicks, int moveOnly);
+void plat_inject_key(PlatWindow *p, const char *name, int down);
+enum { PM_SHIFT = 1, PM_CTRL = 2, PM_ALT = 4, PM_CAPS = 8, PM_CMD = 16 };
+
+/* ---- Cursors ---- */
+void *plat_cursor_system(int idc);          /* IDC_* number */
+void *plat_cursor_image(const uint32_t *argb, int w, int h, int hx, int hy);
+void plat_cursor_set(void *c);              /* NULL hides it */
+void plat_cursor_show(int show);
+
+/* ---- Sound: streams mixed to the default output ---- */
+int plat_audio_open(void);
+void plat_audio_close(void);
+PlatStream *plat_stream_create(int rate, int bits, int channels);
+int plat_stream_put(PlatStream *s, const void *data, int len);
+int plat_stream_queued(PlatStream *s);      /* bytes not played yet: 0 once all are */
+void plat_stream_clear(PlatStream *s);
+void plat_stream_gain(PlatStream *s, float gain);
+void plat_stream_destroy(PlatStream *s);
+
+/* ---- What backends call (msg.c) ---- */
+void input_mouse(struct Wnd *top, int fx, int fy, int button, int down, int clicks, int injected);
+void input_mouse_move(struct Wnd *top, int fx, int fy, int injected);
+void input_wheel(int delta, int injected);
+void input_key(int vk, int scancode, int down, int repeat, int mods, int injected);
+void input_window_moved(struct Wnd *w, int x, int y);
+void input_window_resized(struct Wnd *w, int cw, int ch);
+void input_window_state(struct Wnd *w, int state);  /* SIZE_RESTORED, _MINIMIZED, _MAXIMIZED */
+void input_window_focus(struct Wnd *w);
+void input_window_close(struct Wnd *w);
+void input_window_exposed(struct Wnd *w);
+void input_app_deactivated(void);
+void input_quit(void);
+
+#endif

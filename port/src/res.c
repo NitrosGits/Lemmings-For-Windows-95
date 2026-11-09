@@ -12,7 +12,7 @@ static int name_matches(const char *rname, int rid, LPCSTR name)
         return rid == (int)(uintptr_t)name;
     if (name[0] == '#')
         return rid == atoi(name + 1);
-    return rname && !SDL_strcasecmp(rname, name);
+    return rname && !strcasecmp(rname, name);
 }
 
 const void *res_find_file(const char *type, const char *name, unsigned *size)
@@ -38,7 +38,7 @@ int WINAPI LoadStringA(HINSTANCE inst, UINT id, LPSTR buf, int size)
         return 0;
     for (s = port_res_strings; s->text; s++) {
         if (s->id == id) {
-            SDL_strlcpy(buf, s->text, (size_t)size);
+            port_strlcpy(buf, s->text, (size_t)size);
             return (int)strlen(buf);
         }
     }
@@ -98,9 +98,14 @@ DWORD WINAPI SizeofResource(HMODULE module, HRSRC res)
 
 /* ---- Cursors and icons ---- */
 
+typedef struct Image {          /* 0xAARRGGBB, rows top down */
+    int w, h;
+    uint32_t *px;
+} Image;
+
 typedef struct PCursor {
-    SDL_Cursor *cursor;
-    SDL_Surface *image;         /* icons and resource cursors */
+    void *cursor;               /* the backend's */
+    Image *image;               /* icons and resource cursors */
     int hx, hy;
     char name[64];
     intptr_t id;
@@ -120,13 +125,13 @@ static uint32_t rd32(const BYTE *p)
 }
 
 /* an image of a .cur/.ico file (XOR bitmap with colour table, then AND mask) as ARGB */
-static SDL_Surface *icon_image(const BYTE *file, unsigned size, int *hx, int *hy)
+static Image *icon_image(const BYTE *file, unsigned size, int *hx, int *hy)
 {
     int count = rd16(file + 4), best = -1, bestScore = -1, i;
     const BYTE *e, *img;
     int w, h, bpp, ncolors, x, y, xorPitch, andPitch;
     const BYTE *colors, *xorBits, *andBits;
-    SDL_Surface *s;
+    Image *s;
 
     for (i = 0; i < count; i++) {
         e = file + 6 + i * 16;
@@ -159,13 +164,14 @@ static SDL_Surface *icon_image(const BYTE *file, unsigned size, int *hx, int *hy
     xorPitch = ((w * bpp + 31) / 32) * 4;
     andBits = xorBits + xorPitch * h;
     andPitch = ((w + 31) / 32) * 4;
-    s = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_ARGB8888);
-    if (!s)
-        return NULL;
+    s = malloc(sizeof *s);
+    s->w = w;
+    s->h = h;
+    s->px = calloc((size_t)w * (size_t)h, 4);
     for (y = 0; y < h; y++) {
         const BYTE *xr = xorBits + (size_t)(h - 1 - y) * xorPitch;
         const BYTE *ar = andBits + (size_t)(h - 1 - y) * andPitch;
-        uint32_t *o = (uint32_t *)((BYTE *)s->pixels + (size_t)y * s->pitch);
+        uint32_t *o = s->px + (size_t)y * w;
 
         for (x = 0; x < w; x++) {
             int mask = (ar[x >> 3] >> (7 - (x & 7))) & 1;
@@ -229,7 +235,7 @@ static HCURSOR lookup(const char *kind, LPCSTR name)
     for (i = 0; i < g_ncache; i++) {
         if (strncmp(g_cache[i]->name, kind, 1))
             continue;
-        if (id >= 0 ? g_cache[i]->id == id : !SDL_strcasecmp(g_cache[i]->name + 1, name))
+        if (id >= 0 ? g_cache[i]->id == id : !strcasecmp(g_cache[i]->name + 1, name))
             return g_cacheHandles[i];
     }
     return NULL;
@@ -237,47 +243,13 @@ static HCURSOR lookup(const char *kind, LPCSTR name)
 
 HCURSOR cursor_system(LPCSTR id)
 {
-    SDL_SystemCursor sc;
     PCursor *c;
     HCURSOR h = lookup("S", id);
 
     if (h)
         return h;
-    switch ((int)(uintptr_t)id) {
-    case 32513:
-        sc = SDL_SYSTEM_CURSOR_TEXT;
-        break;
-    case 32514:
-        sc = SDL_SYSTEM_CURSOR_WAIT;
-        break;
-    case 32515:
-        sc = SDL_SYSTEM_CURSOR_CROSSHAIR;
-        break;
-    case 32640:
-    case 32646:
-        sc = SDL_SYSTEM_CURSOR_MOVE;
-        break;
-    case 32642:
-        sc = SDL_SYSTEM_CURSOR_NWSE_RESIZE;
-        break;
-    case 32643:
-        sc = SDL_SYSTEM_CURSOR_NESW_RESIZE;
-        break;
-    case 32644:
-        sc = SDL_SYSTEM_CURSOR_EW_RESIZE;
-        break;
-    case 32645:
-        sc = SDL_SYSTEM_CURSOR_NS_RESIZE;
-        break;
-    case 32648:
-        sc = SDL_SYSTEM_CURSOR_NOT_ALLOWED;
-        break;
-    default:
-        sc = SDL_SYSTEM_CURSOR_DEFAULT;
-        break;
-    }
     c = calloc(1, sizeof *c);
-    c->cursor = SDL_CreateSystemCursor(sc);
+    c->cursor = plat_cursor_system((int)(uintptr_t)id);
     c->id = (intptr_t)(uintptr_t)id;
     strcpy(c->name, "S");
     return remember(c);
@@ -300,7 +272,7 @@ HCURSOR WINAPI LoadCursorA(HINSTANCE inst, LPCSTR name)
     c = calloc(1, sizeof *c);
     c->image = icon_image(f, size, &c->hx, &c->hy);
     if (c->image)
-        c->cursor = SDL_CreateColorCursor(c->image, c->hx, c->hy);
+        c->cursor = plat_cursor_image(c->image->px, c->image->w, c->image->h, c->hx, c->hy);
     c->id = IS_INTRESOURCE(name) ? (intptr_t)(uintptr_t)name : -1;
     snprintf(c->name, sizeof c->name, "C%s", IS_INTRESOURCE(name) ? "" : name);
     return remember(c);
@@ -344,13 +316,11 @@ void cursor_apply(HCURSOR h)
     PCursor *c = cursor_get(h);
 
     if (!h) {
-        SDL_HideCursor();
+        plat_cursor_set(NULL);
         return;
     }
-    if (c && c->cursor) {
-        SDL_SetCursor(c->cursor);
-        SDL_ShowCursor();
-    }
+    if (c && c->cursor)
+        plat_cursor_set(c->cursor);
 }
 
 int cursor_hotspot_size(HCURSOR h, int *w, int *hh)
@@ -372,7 +342,7 @@ void icon_draw(PDC *dc, HICON icon, int x, int y)
     if (!c || !c->image)
         return;
     for (j = 0; j < c->image->h; j++) {
-        const uint32_t *row = (const uint32_t *)((const BYTE *)c->image->pixels + (size_t)j * c->image->pitch);
+        const uint32_t *row = c->image->px + (size_t)j * c->image->w;
 
         for (i = 0; i < c->image->w; i++) {
             int px = x + i + dc->ox, py = y + j + dc->oy;
@@ -402,11 +372,4 @@ BOOL WINAPI DrawIcon(HDC hdc, int x, int y, HICON icon)
     if (dc)
         icon_draw(dc, icon, x, y);
     return dc != NULL;
-}
-
-SDL_Surface *icon_surface(HICON icon)
-{
-    PCursor *c = cursor_get(icon);
-
-    return c ? c->image : NULL;
 }

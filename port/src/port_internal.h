@@ -1,17 +1,22 @@
 /*
- * The SDL3 platform layer's internals (PORTING.md, section 3). Shared by the
+ * The platform layer's internals (PORTING.md, section 3). Shared by the
  * layer's files only; the game sees port/include.
  */
 #ifndef PORT_INTERNAL_H
 #define PORT_INTERNAL_H
 
 #include <windows.h>
-#include <SDL3/SDL.h>
+#include "plat.h"
 
+#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+
+size_t port_strlcpy(char *dst, const char *src, size_t size);
+size_t port_strlcat(char *dst, const char *src, size_t size);
 
 /* ---- Handles ----
  * Every handle the game sees (windows, DCs, GDI objects, menus, cursors,
@@ -139,10 +144,8 @@ struct Wnd {
     RECT inv;               /* client coordinates */
     int erase;
     HFONT font;             /* WM_SETFONT */
-    /* top-level windows: their SDL window and framebuffer */
-    SDL_Window *sdl;
-    SDL_Renderer *ren;
-    SDL_Texture *tex;
+    /* top-level windows: their system window and framebuffer */
+    PlatWindow *plat;
     Surface fb;
     int dirty;
     Surface *overlay;       /* open menu, drawn over the framebuffer */
@@ -224,9 +227,19 @@ int font_draw_prefixed(PDC *dc, PFont *f, int x, int y, const char *s, uint32_t 
 int font_wrap(PFont *f, const char *s, int width, int (*line)(void *ctx, const char *s, int n), void *ctx);
 
 /* ---- Messages ---- */
+/* modal loops (a menu, a scroll bar) see input first: 1 if they took it */
+typedef struct PortInput {
+    int type;
+    Wnd *top;
+    int fx, fy;
+    int button;
+    int vk;
+} PortInput;
+enum { PI_MOVE, PI_DOWN, PI_UP, PI_KEY, PI_FOCUS_LOST, PI_QUIT };
+extern int (*port_input_hook)(const PortInput *in);
 void msg_init(void);
 void msg_post(HWND h, UINT msg, WPARAM wp, LPARAM lp);
-int msg_pump(int wait);             /* SDL events into messages; returns the number handled */
+int msg_pump(int wait);             /* the backend's events into messages; returns the number handled */
 void msg_present(void);
 void msg_window_gone(Wnd *w);       /* drop its timers and queued messages */
 void msg_set_cursor_for(Wnd *top, int fx, int fy);

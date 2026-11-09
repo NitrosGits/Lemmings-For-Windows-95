@@ -11,6 +11,30 @@
 DWORD port_last_error;
 static int g_trace = -1;
 
+/* ---- Strings ---- */
+
+size_t port_strlcpy(char *dst, const char *src, size_t size)
+{
+    size_t n = strlen(src);
+
+    if (size) {
+        size_t k = n < size - 1 ? n : size - 1;
+
+        memcpy(dst, src, k);
+        dst[k] = 0;
+    }
+    return n;
+}
+
+size_t port_strlcat(char *dst, const char *src, size_t size)
+{
+    size_t d = strnlen(dst, size);
+
+    if (d == size)
+        return size + strlen(src);
+    return d + port_strlcpy(dst + d, src, size - d);
+}
+
 /* ---- Handles ---- */
 
 typedef struct HandleSlot {
@@ -100,11 +124,11 @@ void port_trace(const char *fmt, ...)
     va_list ap;
 
     if (g_trace < 0)
-        g_trace = SDL_getenv("LEMMINGS_TRACE") != NULL;
+        g_trace = getenv("LEMMINGS_TRACE") != NULL;
     if (!g_trace)
         return;
     va_start(ap, fmt);
-    fprintf(stderr, "[port %6u] ", (unsigned)SDL_GetTicks());
+    fprintf(stderr, "[port %6u] ", (unsigned)plat_ticks());
     vfprintf(stderr, fmt, ap);
     fputc('\n', stderr);
     va_end(ap);
@@ -120,7 +144,7 @@ void port_fatal(const char *fmt, ...)
     va_end(ap);
     fprintf(stderr, "Lemmings: %s\n", buf);
     if (!port_harness)
-        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Lemmings", buf, NULL);
+        plat_message_box(NULL, buf, "Lemmings", MB_ICONHAND);
     exit(1);
 }
 
@@ -180,7 +204,7 @@ static void shutdown_layer(void)
     reg_save();
     mci_quit();
     wave_quit();
-    SDL_Quit();
+    plat_quit();
 }
 
 void WINAPI ExitProcess(UINT code)
@@ -192,7 +216,7 @@ void WINAPI ExitProcess(UINT code)
 
 DWORD port_ticks(void)
 {
-    return (DWORD)SDL_GetTicks();
+    return (DWORD)plat_ticks();
 }
 
 DWORD WINAPI timeGetTime(void)
@@ -207,7 +231,7 @@ DWORD WINAPI GetTickCount(void)
 
 void WINAPI Sleep(DWORD ms)
 {
-    SDL_Delay(ms);
+    plat_sleep(ms);
 }
 
 void WINAPI OutputDebugStringA(LPCSTR text)
@@ -217,7 +241,7 @@ void WINAPI OutputDebugStringA(LPCSTR text)
 
 void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS st)
 {
-    uint64_t total = (uint64_t)SDL_GetSystemRAM() * 1024 * 1024;
+    uint64_t total = plat_ram_bytes();
 
     if (total > 0x7fff0000)
         total = 0x7fff0000;     /* the game prints them as signed 32-bit numbers */
@@ -316,7 +340,7 @@ int WINAPI lstrcmpA(LPCSTR a, LPCSTR b)
 
 int WINAPI lstrcmpiA(LPCSTR a, LPCSTR b)
 {
-    return SDL_strcasecmp(a, b);
+    return strcasecmp(a, b);
 }
 
 static HINSTANCE g_hinst = (HINSTANCE)(uintptr_t)0x400000;
@@ -330,7 +354,7 @@ HMODULE WINAPI GetModuleHandleA(LPCSTR name)
 DWORD WINAPI GetModuleFileNameA(HMODULE module, LPSTR name, DWORD size)
 {
     (void)module;
-    SDL_strlcpy(name, "C:\\WINLEMM\\LEMMINGS.EXE", size);
+    port_strlcpy(name, "C:\\WINLEMM\\LEMMINGS.EXE", size);
     return (DWORD)strlen(name);
 }
 
@@ -362,7 +386,7 @@ BOOL WINAPI VerQueryValueA(LPCVOID block, LPCSTR sub, LPVOID *buf, PUINT len)
     if (sscanf(sub, "\\StringFileInfo\\%15[^\\]\\%63s", lang, key) != 2)
         return FALSE;
     for (v = port_res_version; v->key; v++) {
-        if (!SDL_strcasecmp(v->lang, lang) && !strcmp(v->key, key)) {
+        if (!strcasecmp(v->lang, lang) && !strcmp(v->key, key)) {
             *buf = (LPVOID)v->value;
             *len = (UINT)strlen(v->value) + 1;
             return TRUE;
@@ -469,11 +493,9 @@ void port_harness_log(const char *fmt, ...);
 
 int WINAPI MessageBoxA(HWND hwnd, LPCSTR text, LPCSTR caption, UINT type)
 {
-    SDL_MessageBoxButtonData buttons[3];
-    SDL_MessageBoxData data;
     char t[2048], c[256];
     Wnd *w = wnd_get(hwnd);
-    int n = 0, pressed = IDOK;
+    int pressed;
 
     port_trace("MessageBox '%s': %s", caption ? caption : "", text ? text : "");
     if (port_harness) {
@@ -483,48 +505,11 @@ int WINAPI MessageBoxA(HWND hwnd, LPCSTR text, LPCSTR caption, UINT type)
     msg_present();
     port_utf8(text, t, sizeof t);
     port_utf8(caption ? caption : "Error", c, sizeof c);
-    switch (type & 0xf) {
-    case MB_OKCANCEL:
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, IDOK, "OK"};
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, IDCANCEL, "Cancel"};
-        break;
-    case MB_YESNO:
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, IDYES, "Yes"};
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, IDNO, "No"};
-        break;
-    case MB_YESNOCANCEL:
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT, IDYES, "Yes"};
-        buttons[n++] = (SDL_MessageBoxButtonData){0, IDNO, "No"};
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, IDCANCEL, "Cancel"};
-        break;
-    default:
-        buttons[n++] = (SDL_MessageBoxButtonData){SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT |
-                                                      SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, IDOK, "OK"};
-        break;
-    }
-    memset(&data, 0, sizeof data);
-    switch (type & 0xf0) {
-    case MB_ICONHAND:
-        data.flags = SDL_MESSAGEBOX_ERROR;
-        break;
-    case MB_ICONEXCLAMATION:
-        data.flags = SDL_MESSAGEBOX_WARNING;
-        break;
-    default:
-        data.flags = SDL_MESSAGEBOX_INFORMATION;
-        break;
-    }
     if (!w)
         w = port_active;
     w = w ? wnd_toplevel(w) : NULL;
-    data.window = w ? w->sdl : NULL;
-    data.title = c;
-    data.message = t;
-    data.numbuttons = n;
-    data.buttons = buttons;
     port_modal_depth++;
-    if (!SDL_ShowMessageBox(&data, &pressed))
-        pressed = buttons[0].buttonID;
+    pressed = plat_message_box(w ? w->plat : NULL, t, c, type);
     port_modal_depth--;
     return pressed;
 }
@@ -578,17 +563,17 @@ static char *find_data_dir(int argc, char **argv)
 {
     const char *cands[8];
     char buf[1100], *res = NULL;
-    const char *base = SDL_GetBasePath();
+    const char *base = plat_base_dir();
     int n = 0, i;
 
     for (i = 1; i + 1 < argc; i++)
         if (!strcmp(argv[i], "--data"))
             cands[n++] = argv[i + 1];
-    if (SDL_getenv("LEMMINGS_DATA"))
-        cands[n++] = SDL_getenv("LEMMINGS_DATA");
+    if (getenv("LEMMINGS_DATA"))
+        cands[n++] = getenv("LEMMINGS_DATA");
     for (i = 0; i < n; i++)
         if (is_data_dir(cands[i]))
-            return SDL_strdup(cands[i]);
+            return strdup(cands[i]);
     if (n)
         port_fatal("The game data folder %s has no GFX folder.", cands[0]);
     /* next to the program (an app bundle's Resources), or orig/WINLEMM of a checkout */
@@ -598,11 +583,11 @@ static char *find_data_dir(int argc, char **argv)
         for (i = 0; i < 6 && !res; i++) {
             snprintf(buf, sizeof buf, "%s%s", base, rel[i]);
             if (is_data_dir(buf))
-                res = SDL_strdup(buf);
+                res = strdup(buf);
         }
     }
     if (!res && is_data_dir("orig/WINLEMM"))
-        res = SDL_strdup("orig/WINLEMM");
+        res = strdup("orig/WINLEMM");
     if (!res)
         port_fatal("Lemmings needs the original game's files.\n\nStart it with --data <folder> (the "
                    "WINLEMM folder of Lemmings for Windows 95), or set LEMMINGS_DATA.");
@@ -626,16 +611,12 @@ int main(int argc, char **argv)
             strcat(cmdline, argv[i]);
         }
     }
-    SDL_SetAppMetadata("Lemmings", "1.0", "io.github.nitrosgits.lemmings-win95");
-    SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
-        port_fatal("SDL_Init: %s", SDL_GetError());
+    plat_init();
     harness_init();
     data = find_data_dir(argc, argv);
-    pref = SDL_getenv("LEMMINGS_PREFS") ? SDL_strdup(SDL_getenv("LEMMINGS_PREFS"))
-                                        : SDL_GetPrefPath("Visual Sciences", "Lemmings");
+    pref = getenv("LEMMINGS_PREFS") ? strdup(getenv("LEMMINGS_PREFS")) : plat_pref_dir();
     if (!pref)
-        port_fatal("No folder for the settings: %s", SDL_GetError());
+        port_fatal("No folder for the settings");
     port_trace("data %s, settings %s", data, pref);
     file_init(data, pref);
     reg_init();
@@ -743,7 +724,7 @@ BOOL WINAPI WinHelpA(HWND hwnd, LPCSTR file, UINT cmd, ULONG_PTR data)
         return FALSE;
     fclose(f);
     snprintf(url, sizeof url, "file://%s", host);
-    return SDL_OpenURL(url);
+    return plat_open_url(url);
 }
 
 /* ---- The C runtime's DLL hook (vscrt.h): nothing to set up natively ---- */

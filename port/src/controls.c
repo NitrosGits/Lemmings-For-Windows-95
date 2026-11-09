@@ -146,17 +146,41 @@ void draw_scrollbar(PDC *dc, const RECT *r, int vert, int min, int max, int pos,
 }
 
 /* the scroll bar loop: arrows and the track repeat while held, the thumb follows the mouse */
+static struct {
+    int fx, fy, done, moved;
+} g_st;
+
+static int scroll_input(const PortInput *in)
+{
+    switch (in->type) {
+    case PI_MOVE:
+        g_st.fx = in->fx;
+        g_st.fy = in->fy;
+        g_st.moved = 1;
+        return 1;
+    case PI_UP:
+    case PI_FOCUS_LOST:
+        g_st.done = 1;
+        return 1;
+    case PI_DOWN:
+    case PI_KEY:
+        return 1;
+    case PI_QUIT:
+        g_st.done = 1;
+        return 0;
+    }
+    return 0;
+}
+
 void scroll_track(Wnd *w, int bar, int fx, int fy)
 {
     UINT msg = bar == SB_VERT ? WM_VSCROLL : WM_HSCROLL;
     RECT wr, r;
     SbParts p;
-    int part, code = -1, lastPos, done = 0, vert = bar == SB_VERT;
+    int part, code = -1, lastPos, vert = bar == SB_VERT;
     DWORD next;
-    SDL_Event ev;
-    Wnd *top = wnd_toplevel(w);
 
-    if (!wnd_scrollbar_rect(w, bar, &r))
+    if (!wnd_scrollbar_rect(w, bar, &r) || port_input_hook)
         return;
     wnd_window_fb(w, &wr);
     OffsetRect(&r, wr.left, wr.top);
@@ -180,22 +204,24 @@ void scroll_track(Wnd *w, int bar, int fx, int fy)
         SendMessageA(w->h, msg, MAKEWPARAM(code, 0), 0);
     }
     next = port_ticks() + 350;
+    memset(&g_st, 0, sizeof g_st);
     port_modal_depth++;
-    while (!done && wnd_get(w->h)) {
+    port_input_hook = scroll_input;
+    while (!g_st.done && wnd_get(w->h)) {
         msg_present();
-        if (SDL_WaitEventTimeout(&ev, 20)) {
-            if (ev.type == SDL_EVENT_MOUSE_MOTION) {
-                fx = (int)ev.motion.x;
-                fy = (int)ev.motion.y;
-                if (part == 4) {
-                    int tlen = vert ? p.track.bottom - p.track.top - (p.thumb.bottom - p.thumb.top)
-                                    : p.track.right - p.track.left - (p.thumb.right - p.thumb.left);
-                    int off = vert ? fy - p.track.top - (p.thumb.bottom - p.thumb.top) / 2
-                                   : fx - p.track.left - (p.thumb.right - p.thumb.left) / 2;
-                    int pos;
+        msg_pump(20);
+        if (g_st.moved) {
+            g_st.moved = 0;
+            fx = g_st.fx;
+            fy = g_st.fy;
+            if (part == 4) {
+                int tlen = vert ? p.track.bottom - p.track.top - (p.thumb.bottom - p.thumb.top)
+                                : p.track.right - p.track.left - (p.thumb.right - p.thumb.left);
+                int off = vert ? fy - p.track.top - (p.thumb.bottom - p.thumb.top) / 2
+                               : fx - p.track.left - (p.thumb.right - p.thumb.left) / 2;
+                int pos;
 
-                    if (tlen <= 0)
-                        continue;
+                if (tlen > 0) {
                     if (off < 0)
                         off = 0;
                     if (off > tlen)
@@ -206,15 +232,9 @@ void scroll_track(Wnd *w, int bar, int fx, int fy)
                         SendMessageA(w->h, msg, MAKEWPARAM(SB_THUMBTRACK, pos), 0);
                     }
                 }
-            } else if (ev.type == SDL_EVENT_MOUSE_BUTTON_UP) {
-                done = 1;
-            } else if (ev.type >= SDL_EVENT_WINDOW_FIRST && ev.type <= SDL_EVENT_WINDOW_LAST) {
-                void msg_handle_event(const SDL_Event *e);
-
-                msg_handle_event(&ev);
             }
         }
-        if (part != 4 && !done && (int)(port_ticks() - next) >= 0) {
+        if (part != 4 && !g_st.done && (int)(port_ticks() - next) >= 0) {
             sb_parts(&r, vert, w->sb[bar].min, w->sb[bar].max, w->sb[bar].pos, &p);
             if (part < 2 ? IN(part == 0 ? p.a1 : p.a2)
                          : IN(p.track) && (part == 2 ? (vert ? fy < p.thumb.top : fx < p.thumb.left)
@@ -224,13 +244,13 @@ void scroll_track(Wnd *w, int bar, int fx, int fy)
         }
     }
 #undef IN
+    port_input_hook = NULL;
     port_modal_depth--;
     if (!wnd_get(w->h))
         return;
     if (part == 4)
         SendMessageA(w->h, msg, MAKEWPARAM(SB_THUMBPOSITION, lastPos), 0);
     SendMessageA(w->h, msg, MAKEWPARAM(SB_ENDSCROLL, 0), 0);
-    (void)top;
 }
 
 /* ---- Button ---- */
@@ -666,7 +686,7 @@ static Edit *edit(Wnd *w)
         Edit *e = calloc(1, sizeof(Edit));
 
         e->limit = 511;
-        SDL_strlcpy(e->text, w->text, sizeof e->text);
+        port_strlcpy(e->text, w->text, sizeof e->text);
         e->len = (int)strlen(e->text);
         w->ctl = e;
     }
@@ -892,7 +912,7 @@ static LRESULT CALLBACK EditProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         e->limit = wp && wp < 511 ? (int)wp : 511;
         return 0;
     case WM_SETTEXT:
-        SDL_strlcpy(e->text, lp ? (const char *)lp : "", sizeof e->text);
+        port_strlcpy(e->text, lp ? (const char *)lp : "", sizeof e->text);
         e->len = (int)strlen(e->text);
         e->caret = e->anchor = e->scroll = 0;
         DefWindowProcA(h, msg, wp, lp);
@@ -901,7 +921,7 @@ static LRESULT CALLBACK EditProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return TRUE;
     case WM_GETTEXT:
         if (wp > 0) {
-            SDL_strlcpy((char *)lp, e->text, (size_t)wp);
+            port_strlcpy((char *)lp, e->text, (size_t)wp);
             return (LRESULT)strlen((char *)lp);
         }
         return 0;
@@ -1042,12 +1062,12 @@ static int lb_insert(Wnd *w, ListBox *l, int at, LPARAM lp)
         l->cap = l->cap ? l->cap * 2 : 16;
         l->items = realloc(l->items, (size_t)l->cap * sizeof(LbItem));
     }
-    it.text = lb_strings(w) ? SDL_strdup(lp ? (const char *)lp : "") : NULL;
+    it.text = lb_strings(w) ? strdup(lp ? (const char *)lp : "") : NULL;
     it.data = lb_strings(w) ? 0 : (ULONG_PTR)lp;
     if (at < 0 || at > l->n) {
         at = l->n;
         if ((w->style & LBS_SORT) && lb_strings(w))
-            for (at = 0; at < l->n && SDL_strcasecmp(l->items[at].text, it.text) <= 0; at++)
+            for (at = 0; at < l->n && strcasecmp(l->items[at].text, it.text) <= 0; at++)
                 ;
     }
     memmove(l->items + at + 1, l->items + at, (size_t)(l->n - at) * sizeof(LbItem));
@@ -1301,7 +1321,7 @@ static LRESULT CALLBACK ListBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
             for (k = 1; k <= l->n; k++) {
                 int j = (l->caret + k + l->n) % l->n;
 
-                if (SDL_tolower((unsigned char)l->items[j].text[0]) == SDL_tolower((int)wp)) {
+                if (tolower((unsigned char)l->items[j].text[0]) == tolower((int)wp)) {
                     lb_select(w, l, j, 1);
                     break;
                 }
@@ -1411,8 +1431,8 @@ static LRESULT CALLBACK ListBoxProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
 
             if (j < 0)
                 j = 0;
-            if (msg == LB_FINDSTRINGEXACT ? !SDL_strcasecmp(l->items[j].text, s)
-                                          : !SDL_strncasecmp(l->items[j].text, s, strlen(s))) {
+            if (msg == LB_FINDSTRINGEXACT ? !strcasecmp(l->items[j].text, s)
+                                          : !strncasecmp(l->items[j].text, s, strlen(s))) {
                 if (msg == LB_SELECTSTRING)
                     lb_select(w, l, j, 0);
                 return j;
