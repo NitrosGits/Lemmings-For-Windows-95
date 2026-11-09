@@ -44,6 +44,8 @@ Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are
 ## Repository Structure
 
 ```
+├── .github/
+│   └── workflows/     # GitHub Actions: Windows build
 ├── src/
 │   ├── include/       # Shared headers and DLL interfaces
 │   ├── crt/           # Lightweight freestanding C runtime stubs for MinGW
@@ -55,8 +57,6 @@ Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are
 │   ├── vsmem/         # VSMEM.DLL source code
 │   ├── filehand/      # FILEHAND.DLL source code
 │   └── gameover/      # GAMEOVER.DLL source code
-├── orig/
-│   └── WINLEMM/       # Original binary files (not tracked; user provided)
 ├── tools/
 │   ├── match.py       # Instruction and relocation comparison engine
 │   ├── msvc/          # Scripts for MSVC 2.2 compilation, padding sweeps & c2dbg tracers
