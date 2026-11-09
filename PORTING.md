@@ -9,7 +9,15 @@ The port is written on `macOS-64` and merged from there into the other two.
 Visual C++ 2.2 or the 32-bit MinGW build (`make`) compile, so both keep working
 on these branches too.
 
-**Status (2026-11-09, paused):** headers (`port/include`), `tools/port/rc2c.py`, the `#ifdef PORT_SDL` source changes (section 5) and most of the layer are written (`port/src`: core, files, registry, GDI, font, windows, messages, resources, menus, dialogs). Still to write: `controls.c` (Button, Static, Edit, ListBox, scroll bars), `wave.c`, `mci.c` + `port/macos/midi_coreaudio.c`, `harness.c`, `CMakeLists.txt`; nothing has been built or run natively yet. All 60 game sources compile for arm64 against the headers; the MinGW build is byte-identical to before.
+**Status (2026-11-09):** the game builds as a native arm64 macOS program and
+plays: title screen, registration, player and level dialogs, options, About,
+level 1, the end screen, music (Core Audio) and sound effects. Checked against
+the original game's reference logs (`tools/port/run.sh`, section 8): level 1,
+the digger replay and a nuke to the end of the level all MATCH. Visual C++ 2.2
+still matches all 696 functions with the port's source changes, and the MinGW
+build is unchanged. Not yet tried by hand on a real screen with a real mouse
+(the harness drives the game through window messages), nor on `linux-64` and
+`windows-64`.
 
 ---
 
@@ -251,34 +259,55 @@ turn up when the sources first compile for arm64.
 
 | File | Change |
 |---|---|
-| `src/include/port64.h` (new) | macros `PORT_GetWindowLong`/`PORT_SetWindowLong`, `PORT_LONG`, `PORT_DWORD`, `PORT_INT`: the pointer-sized Win64 names under `PORT_SDL`, the original's names and types otherwise |
-| `src/include/winlemm.h`, `src/include/lemming.h` | include `port64.h` |
-| `src/include/lemming.h` | `Message(..., (int)(PORT_INT)this)` (the handlers ignore that argument) |
+| `src/include/port64.h` (new) | macros `PORT_PTR_CAST`, `PORT_GetWindowLong`/`PORT_SetWindowLong`, `PORT_LONG`, `PORT_DWORD`: the pointer-sized Win64 names under `PORT_SDL`, the original's names and types otherwise |
+| `src/include/winlemm.h` | includes `port64.h` (the EXE's files) |
+| `src/include/lemming.h` | `Message(..., (int)this)` inside `#ifdef PORT_SDL ... #else ... #endif`, `(int)(INT_PTR)this` natively (the handlers ignore that argument); no `port64.h` here, see below |
 | `src/lemmings/window.cpp`, `statusbar.cpp` | the window object / status bar pointer in window longs through `PORT_Get/SetWindowLong` and `PORT_LONG` |
-| `src/lemmings/frame.cpp` | `g_global28 = (int)(PORT_INT)CreateStatBar(...)` (handles are 32-bit values in the layer, as on Win64) |
-| `src/lemmings/levelsel.cpp` | `return (BOOL)(PORT_INT)g_gameDlgBrush;` (WM_CTLCOLORDLG) |
+| `src/lemmings/frame.cpp` | `g_global28 = PORT_PTR_CAST(int, CreateStatBar(...))` (handles are 32-bit values in the layer, as on Win64) |
+| `src/lemmings/levelsel.cpp` | `return PORT_PTR_CAST(BOOL, g_gameDlgBrush);` (WM_CTLCOLORDLG) |
 | `src/lemmings/midi.cpp` | MCI parameter blocks and `dwCallback` as `PORT_DWORD` |
 | `src/lemmings/mainwnd.cpp`, `frontend.cpp`, `endscreen.cpp` | WinHelp's string argument as `PORT_DWORD` |
+| `src/process/lemmings.cpp` | PROCESS's global `operator new`/`delete` (onto VSMEM) left out: in one executable they would replace the allocator of the whole process, system libraries included. PROCESS never mixes `new`/`delete` with `VSMEM_Allocate`/`VSMEM_Free`. |
+| `src/lemmings/settings.cpp` | no `InstallUninstaller()` (it copies the CD's Windows uninstaller and registers it) |
+
+Visual C++ 2.2 notices more than the tokens it compiles, so two lessons:
+
+- `PORT_PTR_CAST(type, p)` gives it exactly the original's tokens `(type)p`.
+  A first version wrote `(int)(PORT_INT)p`, i.e. `(int)(int)p` for Visual
+  C++: the same instructions, but C2's internal numbering shifted and 17
+  PROCESS functions and one LEMMINGS function stopped matching (the project's
+  known sensitivity, docs/DECOMP.md).
+- Even macro definitions count: with `port64.h` included in `lemming.h`, every
+  function still matched but PROCESS.DLL's vtables came out in another order
+  in `.rdata` (19 bytes of the whole file). A plain `#ifdef PORT_SDL` at the
+  one use site leaves the DLL exactly as before; the EXE, with `port64.h` in
+  `winlemm.h`, is unaffected.
+
+Checked after every change of `src/`: `python3 tools/msvc/build.py --funcs`
+for all 8 modules (696/696, the same whole-file differences from the original
+as `main`'s sources give), PROCESS.DLL and LEMMINGS.EXE section by section
+against a build of `main` (identical apart from timestamps), and a clean
+`make` (the same 8 binaries as before).
 
 ---
 
 ## 6. Order of work
 
-1. **Headers and build.** `port/include`, `CMakeLists.txt`, `rc2c.py`; all game
+1. **Headers and build.** (done) `port/include`, `CMakeLists.txt`, `rc2c.py`; all game
    sources compile for arm64; the `#ifdef PORT_SDL` changes of section 5.
-2. **Windows, drawing, input, loop.** Window manager, message loop, timers, GDI
+2. **Windows, drawing, input, loop.** (done) Window manager, message loop, timers, GDI
    with DIB sections, the font; the splash screen and the title screen appear.
-3. **Files and settings.** Path translation, registry file; the registration
+3. **Files and settings.** (done) Path translation, registry file; the registration
    and player dialogs need the dialog manager, so that comes next.
-4. **Dialogs and menus.** Dialog manager, the standard controls, the menu bar;
+4. **Dialogs and menus.** (done) Dialog manager, the standard controls, the menu bar;
    registration, player selection, options, level selection.
-5. **The game.** Level 1 plays: game view with scroll bars, docked icon panel
+5. **The game.** (done; floating tool windows not tried yet) Level 1 plays: game view with scroll bars, docked icon panel
    and map, status bar; the end screen; floating tool windows.
-6. **Sound.** WAV effects, then music (MCI emulation and the Core Audio backend).
-7. **Checks.** The harness; level 1 and the digger run compared with the
+6. **Sound.** (done) WAV effects, then music (MCI emulation and the Core Audio backend).
+7. **Checks.** (done) The harness; level 1 and the digger run compared with the
    reference logs; a level ends cleanly; `make` and the 696/696 matching build
    still work.
-8. **macOS packaging and CI.** App bundle, the CI workflow, README section.
+8. **macOS packaging and CI.** (done) App bundle, the CI workflow, README section.
 
 ---
 
@@ -309,7 +338,31 @@ turn up when the sources first compile for arm64.
 
 ---
 
-## 8. Decisions
+## 8. Results and how to check them
+
+`tools/port/run.sh NAME UPDATES 'commands' BASELINE` runs the native game under
+the layer's test harness with the Wine runs' player and settings (and the
+client size of the Wine window), and compares its lemming log with a log of
+the original game made by `tools/wine/run.sh`:
+
+| Run | Commands | Result |
+|---|---|---|
+| `l1` | play level 1, 300 updates | MATCH `hd-base-l1` (301 updates) |
+| `dig` | `waitupd 200;click 332 395;waitupd 228;click 596 138` (digger) | MATCH `hd-base-dig` (403 updates) |
+| `nuke` | `waitupd 100;click 552 395;waitupd 110;click 552 395;waitupd 120;dbl 552 395` | MATCH `s43-nuke-orig2` (264 updates, to the end of the level); the end screen follows, no crash |
+
+With `START=` it stays on the title screen: the registration, Select Player,
+Choose Level (tree, preview, details), Options and About dialogs were opened
+and photographed that way (`shot NAME`). With sound and music on (`SOUND=1`)
+the level-1 log still matches, and the MCI trace shows the tune opened, played
+with notification, stopped and closed.
+
+Known differences from the original on Windows: the text is the layer's own
+bitmap font; a top-level window's frame and caption are the system's (so the
+game's window is its client size); the dock drag outline is not drawn; Help
+opens the English PDF manual.
+
+## 9. Decisions
 
 Asked on 2026-11-09; the user's answers:
 

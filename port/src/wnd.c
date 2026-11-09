@@ -1676,7 +1676,7 @@ BOOL WINAPI ScrollWindow(HWND h, int dx, int dy, const RECT *rect, const RECT *c
     Wnd *top;
     RECT c;
     Region g;
-    int i, y, cw, ch;
+    int y, cw, ch;
 
     (void)rect;
     (void)clip;

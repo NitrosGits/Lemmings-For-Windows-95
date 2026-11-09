@@ -16,8 +16,12 @@ function(lemmings_macos_target target)
       OUTPUT_NAME Lemmings
       MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/port/macos/Info.plist.in
       MACOSX_BUNDLE_BUNDLE_NAME Lemmings
-      MACOSX_BUNDLE_GUI_IDENTIFIER com.psygnosis.lemmings
+      MACOSX_BUNDLE_GUI_IDENTIFIER io.github.nitrosgits.lemmings-win95
       MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
+    # its own copy of SDL3, so it runs without Homebrew
+    add_custom_command(TARGET ${target} POST_BUILD
+      COMMAND ${CMAKE_SOURCE_DIR}/port/macos/bundle_sdl.sh $<TARGET_FILE:${target}> $<TARGET_FILE:SDL3::SDL3-shared>
+      VERBATIM)
   endif()
 endfunction()

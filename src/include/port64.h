@@ -9,17 +9,17 @@
 #define PORT64_H
 
 #ifdef PORT_SDL
+#define PORT_PTR_CAST(type, p) (type)(INT_PTR)p  /* a pointer or handle cut to an int */
 #define PORT_GetWindowLong GetWindowLongPtr
 #define PORT_SetWindowLong SetWindowLongPtr
 #define PORT_LONG LONG_PTR      /* a pointer in a window long */
 #define PORT_DWORD DWORD_PTR    /* a pointer passed as a DWORD */
-#define PORT_INT INT_PTR        /* a pointer or handle passed as an int */
 #else
+#define PORT_PTR_CAST(type, p) (type)p  /* exactly the original's tokens */
 #define PORT_GetWindowLong GetWindowLong
 #define PORT_SetWindowLong SetWindowLong
 #define PORT_LONG LONG
 #define PORT_DWORD DWORD
-#define PORT_INT int
 #endif
 
 #endif

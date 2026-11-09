@@ -80,7 +80,7 @@ HWND CreateMainWindow(HINSTANCE hInstance)
     wsprintf(title, GetString(0x110), g_userName);
     hwnd = CreateWindowEx(0, g_frameClass, title, style | WS_VISIBLE | WS_CLIPCHILDREN | WS_OVERLAPPEDWINDOW,
                           CW_USEDEFAULT, CW_USEDEFAULT, w, h, 0, 0, hInstance, 0);
-    g_global28 = (int)(PORT_INT)CreateStatBar(g_hInst, hwnd, 0, &g_rectStatus, &g_mainBar, g_mainPanes);
+    g_global28 = PORT_PTR_CAST(int, CreateStatBar(g_hInst, hwnd, 0, &g_rectStatus, &g_mainBar, g_mainPanes));
     g_frameAdjust.top = 0;
     g_frameAdjust.left = 0;
     g_frameAdjust.right = g_frameAdjust.bottom = 100;

@@ -626,7 +626,7 @@ int main(int argc, char **argv)
             strcat(cmdline, argv[i]);
         }
     }
-    SDL_SetAppMetadata("Lemmings", "1.0", "com.psygnosis.lemmings");
+    SDL_SetAppMetadata("Lemmings", "1.0", "io.github.nitrosgits.lemmings-win95");
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS))
         port_fatal("SDL_Init: %s", SDL_GetError());
