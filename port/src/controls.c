@@ -145,6 +145,23 @@ void draw_scrollbar(PDC *dc, const RECT *r, int vert, int min, int max, int pos,
         draw_button_face(dc, &p.thumb, 0, 0);
 }
 
+int scroll_thumb_center(Wnd *w, int bar, int *x, int *y)
+{
+    RECT wr, r;
+    SbParts p;
+
+    if (!wnd_scrollbar_rect(w, bar, &r))
+        return 0;
+    wnd_window_fb(w, &wr);
+    OffsetRect(&r, wr.left, wr.top);
+    sb_parts(&r, bar == SB_VERT, w->sb[bar].min, w->sb[bar].max, w->sb[bar].pos, &p);
+    if (rect_empty(&p.thumb))
+        return 0;
+    *x = (p.thumb.left + p.thumb.right) / 2;
+    *y = (p.thumb.top + p.thumb.bottom) / 2;
+    return 1;
+}
+
 /* the scroll bar loop: arrows and the track repeat while held, the thumb follows the mouse */
 static struct {
     int fx, fy, done, moved;
@@ -209,6 +226,8 @@ void scroll_track(Wnd *w, int bar, int fx, int fy)
     port_input_hook = scroll_input;
     while (!g_st.done && wnd_get(w->h)) {
         msg_present();
+        if (port_harness)
+            harness_poll();
         msg_pump(20);
         if (g_st.moved) {
             g_st.moved = 0;

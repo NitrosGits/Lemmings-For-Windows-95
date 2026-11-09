@@ -868,6 +868,30 @@ void plat_inject_mouse(PlatWindow *p, int x, int y, int button, int down, int cl
     }
 }
 
+void plat_inject_drag(PlatWindow *p, int x1, int y1, int x2, int y2, int steps)
+{
+    @autoreleasepool {
+        CGFloat h = p->view.bounds.size.height;
+        int i;
+
+        /* all at once: a native control's tracking loop takes them from the queue */
+        for (i = 0; i <= steps + 1; i++) {
+            NSEventType t = i == 0 ? NSEventTypeLeftMouseDown : i == steps + 1 ? NSEventTypeLeftMouseUp
+                                                                              : NSEventTypeLeftMouseDragged;
+            int k = i > steps ? steps : i;
+            double x = x1 + (double)(x2 - x1) * k / (steps > 0 ? steps : 1);
+            double y = y1 + (double)(y2 - y1) * k / (steps > 0 ? steps : 1);
+            NSEvent *e = [NSEvent mouseEventWithType:t location:NSMakePoint(x + 0.5, h - y - 0.5) modifierFlags:0
+                                           timestamp:inject_stamp() windowNumber:p->win.windowNumber context:nil
+                                         eventNumber:0 clickCount:t == NSEventTypeLeftMouseDragged ? 0 : 1
+                                            pressure:t == NSEventTypeLeftMouseUp ? 0 : 1];
+
+            [NSApp postEvent:e atStart:NO];
+        }
+        g_injectedDown = 0;
+    }
+}
+
 static int keycode_of_name(const char *name, NSString **chars)
 {
     static const struct {

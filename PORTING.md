@@ -209,8 +209,14 @@ row). Static text and the game's own classes (`IconTextClass`,
 `IconImageClass`) stay drawn: they rely on `WM_CTLCOLOR*` and the game's
 backgrounds. Each radio button gets its own superview, because AppKit groups
 all the radio buttons of a view while the dialog's groups are its `WS_GROUP`
-runs. `LEMMINGS_NATIVE_CONTROLS` (letters `b`uttons, `g`roup boxes, `e`dit,
-`l`ists, `t`ree) limits which kinds get views, for comparisons.
+runs. Any window's scroll bars (the level view's) are system scrollers the
+same way (`NSScroller`, the always-shown legacy style, the knob as large as
+the view is part of the level): a click in the track sends `SB_PAGELEFT`/
+`SB_PAGERIGHT`, moving the knob `SB_THUMBTRACK`, letting it go
+`SB_THUMBPOSITION` and `SB_ENDSCROLL`, and the knob follows the game's own
+scrolling (the map, the screen edges) at each present. `LEMMINGS_NATIVE_CONTROLS`
+(letters `b`uttons, `g`roup boxes, `e`dit, `l`ists, `t`ree, `s`crollers)
+limits which kinds get views, for comparisons.
 
 *Menus.* With a system menu bar (macOS), a window's menu goes there: the
 application menu (About, Hide, Quit) and then the game's drop-down menus,
@@ -396,6 +402,10 @@ against a build of `main` (identical apart from timestamps), and a clean
   updates, so logs stay comparable. While AppKit tracks a menu or a window
   drag the game waits, as a Win32 program in a modal menu or move loop does; a
   timer in AppKit's tracking mode keeps presenting meanwhile.
+- **The vertical scroll bar.** The game offers only zooms whose window fits
+  the screen (`WindowFits`), so the level's whole height is always in view
+  and the vertical bar never gets a range: its scroller is the horizontal
+  one's code turned upright, never seen in use.
 - **Native controls and the layer.** A control's native view and its layer
   state can disagree only between a user's action and the next sync; the
   layer's state wins. Keys typed into a native field never reach the layer's
@@ -436,6 +446,7 @@ the original game made by `tools/wine/run.sh`:
 | `level` | Choose Level, `sdbl` on two tree rows (open Original Levels, then Fun), `sclick` on a level | as `expect/level.txt` (8 rows, the level's details shown) |
 | `ukey` | Select Player, `skey x` in the name field, `skey Return` | the dialog closes (OK, once), the new player "Testerx" is saved |
 | `okey`, `oret` | Options, `sclick` on Music On, then `skey Escape` / `skey Return` | the dialog closes; Music stays on (Cancel) / goes off (OK) |
+| `scroll` | level 20 (`LEVEL=20`: its scenery spans the whole map), the level view's scroller: a click in the track, the knob dragged to the right end, the left end, the middle | positions (`sbs`) as `expect/scroll.txt`: 198, +80 (one page), 2066 (the end), 0, 1034 (the middle) |
 | `sound` (only when named: it plays out loud) | the nuke with sound and music on (`SOUND=1`), `levels` after it | MATCH; the four effects put 1.4 s of sound out, the music plays without a gap (16.1 of 16.2 s) |
 | `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list, menus swapped in the menu bar), exit code 0, no crash report |
 
@@ -459,7 +470,10 @@ NAME` saves the framebuffer as a BMP, `wshot NAME` the window as AppKit shows
 it, native controls included, as a PNG; `levels` how many seconds the sound
 output and the music synthesizer have played so far, how many of them had
 sound above -60 dB, and their peaks (meters in `audio_coreaudio.c` and a
-render notification on the synthesizer's output unit). A click on a native control posts its
+render notification on the synthesizer's output unit); `sbs` the scroll bars
+(range, position, whose), `sdrag X1 Y1 X2 Y2` a system drag, `sdragsb H|V N`
+the first horizontal or vertical scroll bar's knob dragged to client x or y
+`N`, `wsize W H` the window resized. `LEVEL=N` makes run.sh start level N. A click on a native control posts its
 button-up with the button-down: the control tracks the mouse in a loop of its
 own until the button comes up, and the harness can't run meanwhile.
 
@@ -481,8 +495,9 @@ window's frame and caption are the system's (so the game's window is its
 client size); the menus are in the macOS menu bar, with About and Quit also in
 the application menu; dialog controls are AppKit's (Aqua look, the system
 font, the mini size where a Windows label is too wide for the small one); the
-game view's scroll bars are still the layer's drawn ones; the dock drag outline
-is not drawn; Help opens the English PDF manual. A logout or restart while the
+level view's scroll bar is a macOS scroller with a proportional knob, and a
+click in its track moves one page or jumps there as the system setting says
+(Windows always pages); the dock drag outline is not drawn; Help opens the English PDF manual. A logout or restart while the
 game runs reports that Lemmings cancelled it (the game quits meanwhile; a
 second try goes through): Quit is answered "cancel" and passed to the game as
 `WM_CLOSE`, because AppKit waits in a modal loop of its own for a later

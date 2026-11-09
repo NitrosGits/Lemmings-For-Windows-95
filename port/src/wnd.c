@@ -513,7 +513,7 @@ int wnd_scrollbar_rect(Wnd *w, int bar, RECT *r)
     return 1;
 }
 
-static int scroll_page(Wnd *w, int bar)
+int wnd_scroll_page(Wnd *w, int bar)
 {
     int cw, ch;
 
@@ -543,9 +543,13 @@ void wnd_nc_paint(Wnd *w)
     for (bar = 0; bar < 2; bar++) {
         RECT r;
 
-        if (wnd_scrollbar_rect(w, bar, &r))
+        if (!wnd_scrollbar_rect(w, bar, &r))
+            continue;
+        if (w->sb[bar].view)        /* the system's scroller shows it: only its background here */
+            gdi_fill(dc, &r, sys_xrgb(COLOR_BTNFACE));
+        else
             draw_scrollbar(dc, &r, bar == SB_VERT, w->sb[bar].min, w->sb[bar].max, w->sb[bar].pos,
-                           scroll_page(w, bar), !(w->style & WS_DISABLED));
+                           wnd_scroll_page(w, bar), !(w->style & WS_DISABLED));
     }
     if (w->sb[0].shown && w->sb[1].shown)
         gdi_fill(dc, &(RECT){wv - b - SCROLL_W, wh - b - SCROLL_W, wv - b, wh - b}, sys_xrgb(COLOR_BTNFACE));
@@ -897,6 +901,7 @@ static void free_tree(Wnd *w)
         port_active = NULL;
     msg_window_gone(w);
     peer_destroy(w);
+    peer_scrollbars_gone(w);
     if (w->ctlFree)
         w->ctlFree(w);
     if (!w->parent) {

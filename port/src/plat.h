@@ -70,6 +70,8 @@ int plat_key_char(int scancode, int mods);
 /* the harness's own input, as if from the user */
 void plat_inject_mouse(PlatWindow *p, int x, int y, int button, int down, int clicks, int moveOnly);
 void plat_inject_key(PlatWindow *p, const char *name, int down);
+/* a drag with the left button from x1,y1 to x2,y2, in steps */
+void plat_inject_drag(PlatWindow *p, int x1, int y1, int x2, int y2, int steps);
 enum { PM_SHIFT = 1, PM_CTRL = 2, PM_ALT = 4, PM_CAPS = 8, PM_CMD = 16 };
 
 /* ---- Cursors ---- */
@@ -102,6 +104,11 @@ void plat_control_focus(PlatWindow *top, PlatControl *c);      /* NULL: the wind
 void plat_list_reload(PlatControl *c, int rows, int rowHeight);
 void plat_list_select(PlatControl *c, int row);               /* -1: none */
 void plat_list_top(PlatControl *c, int row);                  /* the first row shown */
+/* a window's scroll bar as the system's scroller (frame, visible and enabled
+   through plat_control_frame); value and proportion (the knob) 0..1 */
+PlatControl *plat_scroller_create(PlatWindow *top, uint32_t hwnd, int vertical);
+void plat_scroller_set(PlatControl *c, double value, double proportion);
+void plat_scroller_knob(PlatControl *c, int *x, int *y);         /* the knob's centre (the harness) */
 
 /* ---- Sound: streams mixed to the default output ---- */
 int plat_audio_open(void);
@@ -141,6 +148,8 @@ enum {
 };
 void input_control(uint32_t hwnd, int event, int arg);
 void input_control_text(uint32_t hwnd, const char *utf8);     /* an edit field's new text */
+/* a scroller used: code SB_*; for SB_THUMBTRACK/SB_THUMBPOSITION where the knob is (0..1) */
+void input_scroll(uint32_t hwnd, int vertical, int code, double value);
 int list_native_text(uint32_t hwnd, int row, char *utf8, int size);
 /* an owner-drawn row through WM_DRAWITEM, 0x00RRGGBB pixels; 0 if not drawn */
 int list_native_draw(uint32_t hwnd, int row, int w, int h, uint32_t *xrgb);

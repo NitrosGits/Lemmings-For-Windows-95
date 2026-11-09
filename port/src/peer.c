@@ -10,6 +10,12 @@
  * LBN_SELCHANGE, WM_SETTEXT and EN_CHANGE, dialog keys). Static text and the
  * game's own control classes stay drawn: they rely on WM_CTLCOLOR* and the
  * game's backgrounds.
+ *
+ * Any window's scroll bars (WS_HSCROLL, WS_VSCROLL: the game view's) are the
+ * system's scrollers the same way: the layer keeps range and position, the
+ * scroller shows them, and using it sends WM_HSCROLL/WM_VSCROLL as the drawn
+ * bar did (SB_PAGE*, SB_THUMBTRACK while the knob moves, SB_THUMBPOSITION and
+ * SB_ENDSCROLL when it is let go).
  */
 #include "port_internal.h"
 
@@ -189,13 +195,112 @@ static void sync_tree(Wnd *w)
     }
 }
 
+/* ---- Scroll bars ---- */
+
+static void sync_scrollbar(Wnd *top, Wnd *w, int bar)
+{
+    ScrollBar *sb = &w->sb[bar];
+    RECT r, wr;
+    int visible, enabled, range;
+    double value, proportion;
+
+    if (!wnd_scrollbar_rect(w, bar, &r)) {
+        if (sb->view && sb->visible) {
+            plat_control_frame(sb->view, sb->rc.left, sb->rc.top, 0, 0, 0, 0);
+            sb->visible = 0;
+        }
+        return;
+    }
+    if (!sb->view) {
+        sb->view = plat_scroller_create(top->plat, H32(w->h), bar == SB_VERT);
+        if (!sb->view)
+            return;
+        sb->visible = sb->enabled = -1;
+        sb->value = sb->proportion = -1;
+        wnd_nc_paint(w);    /* the drawn bar is gone */
+    }
+    wnd_window_fb(w, &wr);
+    OffsetRect(&r, wr.left, wr.top);
+    visible = wnd_visible(w);
+    range = sb->max - sb->min;
+    enabled = range > 0 && !(w->style & WS_DISABLED);
+    if (!EqualRect(&r, &sb->rc) || visible != sb->visible || enabled != sb->enabled) {
+        plat_control_frame(sb->view, r.left, r.top, r.right - r.left, r.bottom - r.top, visible, enabled);
+        sb->rc = r;
+        sb->visible = visible;
+        sb->enabled = enabled;
+    }
+    /* the knob as large as the page is part of the whole */
+    {
+        int page = wnd_scroll_page(w, bar);
+
+        value = range > 0 ? (double)(sb->pos - sb->min) / range : 0;
+        proportion = range > 0 && page > 0 ? (double)page / (range + page) : 1;
+    }
+    if (value != sb->value || proportion != sb->proportion) {
+        plat_scroller_set(sb->view, value, proportion);
+        sb->value = value;
+        sb->proportion = proportion;
+    }
+}
+
+static void sync_scrollbars(Wnd *top, Wnd *w)
+{
+    Wnd *c;
+
+    for (c = w->child; c; c = c->next) {
+        if (c->destroyed)
+            continue;
+        /* a native list scrolls itself */
+        if (!c->peer && (c->sb[SB_HORZ].shown || c->sb[SB_HORZ].view))
+            sync_scrollbar(top, c, SB_HORZ);
+        if (!c->peer && (c->sb[SB_VERT].shown || c->sb[SB_VERT].view))
+            sync_scrollbar(top, c, SB_VERT);
+        sync_scrollbars(top, c);
+    }
+}
+
+void peer_scrollbars_gone(Wnd *w)
+{
+    int bar;
+
+    for (bar = 0; bar < 2; bar++)
+        if (w->sb[bar].view) {
+            plat_control_destroy(w->sb[bar].view);
+            w->sb[bar].view = NULL;
+        }
+}
+
+void input_scroll(uint32_t hwnd, int vertical, int code, double value)
+{
+    Wnd *w = wnd_get((HWND)(uintptr_t)hwnd);
+    int bar = vertical ? SB_VERT : SB_HORZ, pos = 0;
+
+    if (!w || w->destroyed || (w->style & WS_DISABLED) || (wnd_toplevel(w)->style & WS_DISABLED))
+        return;
+    if (code == SB_THUMBTRACK || code == SB_THUMBPOSITION) {
+        ScrollBar *sb = &w->sb[bar];
+
+        value = value < 0 ? 0 : value > 1 ? 1 : value;
+        pos = sb->min + (int)(value * (sb->max - sb->min) + 0.5);
+    }
+    if (port_harness)
+        port_harness_log("  view %s %d: scroll %s code %d pos %d", w->cls->name, w->id, vertical ? "V" : "H", code,
+                         pos);
+    SendMessageA(w->h, vertical ? WM_VSCROLL : WM_HSCROLL, MAKEWPARAM(code, pos), 0);
+}
+
 void peer_sync_all(void)
 {
     Wnd *t;
 
-    for (t = port_top; t; t = t->next)
-        if (!t->destroyed && t->plat && t->dlg)
+    for (t = port_top; t; t = t->next) {
+        if (t->destroyed || !t->plat)
+            continue;
+        if (t->dlg)
             sync_tree(t);
+        sync_scrollbars(t, t);
+    }
 }
 
 void peer_create(Wnd *w)

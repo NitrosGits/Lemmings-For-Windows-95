@@ -8,7 +8,7 @@
 # BASELINE (e.g. build/runs/hd-base-l1.txt) the log is compared with it by
 # tools/cmplog.py. Muted unless SOUND=1. Needs the native build
 # (build/native/lemmings) and the original data (ORIG, default orig/WINLEMM,
-# else the main checkout's).
+# else the main checkout's). LEVEL= starts another level (default 1).
 ROOT=${0:A:h:h:h}
 EXE=${EXE:-$ROOT/build/native/lemmings}
 ORIG=${ORIG:-$ROOT/orig/WINLEMM}
@@ -41,7 +41,7 @@ cat > $R/prefs/registry.txt <<EOF
 "IconDocked"=dword:00000001
 "IconX"=dword:00000000
 "IconY"=dword:00000000
-"Level"=dword:00000001
+"Level"=dword:$(printf %08x ${LEVEL:-1})
 "MapDocked"=dword:00000001
 "MapX"=dword:00000000
 "MapY"=dword:00000000

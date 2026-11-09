@@ -17,7 +17,7 @@ BASE=${BASE:-$ROOT/build/runs}
 [[ -f $BASE/hd-base-l1.txt ]] || BASE=${ROOT:h:h:h}/build/runs
 DIG='waitupd 200;click 332 395;waitupd 228;click 596 138'
 NUKE='waitupd 100;click 552 395;waitupd 110;click 552 395;waitupd 120;dbl 552 395'
-names=(l1 dig nuke sdig skey smenu squit zoomclk opts user level ukey okey oret again); (( $# )) && names=($@)
+names=(l1 dig nuke sdig skey smenu squit zoomclk opts user level ukey okey oret scroll again); (( $# )) && names=($@)
 
 result() {   # the comparison's verdict, or the run's last line
   local out=$1
@@ -58,6 +58,16 @@ for n in $names; do
   zoomclk)
     r=$(TIMEOUT=60 $RUN zoomclk 0 'waitupd 20;menu Set Options;wait 1500;sclick 251 104;wait 800;ctl OK;wait 3000;shot z1;menu Exit;wait 2000' | tail -1)
     r="$r, $(sips -g pixelHeight $ROOT/build/runs-native/zoomclk.run/z1.BMP 2>/dev/null | grep -o 'pixelHeight.*')"
+    ;;
+  scroll)
+    # the level view's scroll bar (the system's scroller) on level 20, whose
+    # scenery spans the map: a click in the track (one page), the knob dragged
+    # to the right end, the left end and the middle; the positions (sbs) as
+    # tools/port/expect/scroll.txt has them
+    r=$(LEVEL=20 TIMEOUT=60 $RUN scroll 0 'waitupd 15;sbs;sclick 1100 331;wait 600;sbs;sdragsb H 1269;wait 1200;sbs;sdragsb H 0;wait 1200;sbs;sdragsb H 635;wait 1200;sbs;menu Exit;wait 1500' | tail -1)
+    grep '^  sb ' $ROOT/build/runs-native/scroll.cmd > $ROOT/build/runs-native/scroll.ctls
+    if cmp -s $ROOT/tools/port/expect/scroll.txt $ROOT/build/runs-native/scroll.ctls; then r="MATCH ($r)"
+    else r="DIFFER: diff tools/port/expect/scroll.txt build/runs-native/scroll.ctls ($r)"; fi
     ;;
   sound)
     r=$(SOUND=1 TIMEOUT=90 $RUN sound 264 "waitupd 50;levels;${NUKE};waitupd 200;levels" $BASE/s43-nuke-orig2.txt)

@@ -536,9 +536,13 @@ void input_command(int id)
         msg_post(m->h, WM_COMMAND, (WPARAM)id, 0);
 }
 
+static void present_windows(void);
+
+/* AppKit runs a loop of its own (a menu, a scroller, a window drag): show what
+   was drawn meanwhile, but leave the native views alone, they are in use */
 void input_tracking_idle(void)
 {
-    msg_present();
+    present_windows();
 }
 
 int msg_pump(int wait)
@@ -550,9 +554,14 @@ int msg_pump(int wait)
 
 void msg_present(void)
 {
+    peer_sync_all();
+    present_windows();
+}
+
+static void present_windows(void)
+{
     Wnd *w;
 
-    peer_sync_all();
     for (w = port_top; w; w = w->next) {
         if (!w->dirty || w->destroyed || !w->plat || !wnd_visible(w))
             continue;

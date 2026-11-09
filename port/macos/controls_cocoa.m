@@ -18,6 +18,7 @@ struct PlatControl {
     uint32_t hwnd;
     int kind, nrows, rowH;
     int quiet;              /* our own changes: report nothing */
+    int vertical, tracking, knobMoved;  /* a scroller */
 };
 
 @interface PortControls : NSObject <NSTextFieldDelegate, NSTableViewDataSource, NSTableViewDelegate>
@@ -102,7 +103,67 @@ static NSFont *small_font(void)
 }
 @end
 
+/* a window's scroll bar: the legacy style (always shown, the space is the
+   window's), the knob as large as the page */
+@interface PortScroller : NSScroller
+@property(nonatomic) PlatControl *pc;
+@end
+
+@implementation PortScroller
++ (BOOL)isCompatibleWithOverlayScrollers
+{
+    return NO;
+}
+- (BOOL)acceptsFirstMouse:(NSEvent *)e
+{
+    return YES;
+}
+- (void)mouseDown:(NSEvent *)e
+{
+    PlatControl *c = self.pc;
+
+    if (!c) {
+        [super mouseDown:e];
+        return;
+    }
+    /* the scroller tracks the mouse until the button comes up, sending its
+       action meanwhile; then the scroll ends, as Win32's do */
+    c->tracking = 1;
+    c->knobMoved = 0;
+    [super mouseDown:e];
+    if (self.pc) {
+        c->tracking = 0;
+        if (c->knobMoved)
+            input_scroll(c->hwnd, c->vertical, SB_THUMBPOSITION, self.doubleValue);
+        if (self.pc)
+            input_scroll(c->hwnd, c->vertical, SB_ENDSCROLL, 0);
+    }
+}
+@end
+
 @implementation PortControls
+- (void)scrollerUsed:(PortScroller *)s
+{
+    PlatControl *c = s.pc;
+
+    if (!c)
+        return;
+    switch (s.hitPart) {
+    case NSScrollerDecrementPage:
+        input_scroll(c->hwnd, c->vertical, SB_PAGEUP, 0);
+        break;
+    case NSScrollerIncrementPage:
+        input_scroll(c->hwnd, c->vertical, SB_PAGEDOWN, 0);
+        break;
+    case NSScrollerKnob:
+    case NSScrollerKnobSlot:
+        c->knobMoved = 1;
+        input_scroll(c->hwnd, c->vertical, SB_THUMBTRACK, s.doubleValue);
+        break;
+    default:
+        break;
+    }
+}
 - (void)clicked:(NSControl *)sender
 {
     input_control((uint32_t)sender.tag, PCE_CLICK, 0);
@@ -322,11 +383,65 @@ PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
     }
 }
 
+PlatControl *plat_scroller_create(PlatWindow *top, uint32_t hwnd, int vertical)
+{
+    @autoreleasepool {
+        const char *only = getenv("LEMMINGS_NATIVE_CONTROLS");
+        PlatControl *c;
+        PortScroller *s;
+
+        if (only && !strchr(only, 's'))
+            return NULL;
+        if (!g_ctl)
+            g_ctl = [PortControls new];
+        c = calloc(1, sizeof *c);
+        c->hwnd = hwnd;
+        c->kind = -1;
+        c->vertical = vertical;
+        /* a scroller is vertical or horizontal by the shape it starts with */
+        s = [[PortScroller alloc] initWithFrame:vertical ? NSMakeRect(0, 0, 16, 100) : NSMakeRect(0, 0, 100, 16)];
+        s.pc = c;
+        s.scrollerStyle = NSScrollerStyleLegacy;
+        s.controlSize = NSControlSizeRegular;
+        s.target = g_ctl;
+        s.action = @selector(scrollerUsed:);
+        s.enabled = YES;
+        c->view = c->keyView = s;
+        c->view.hidden = YES;
+        [top->view addSubview:s];
+        return c;
+    }
+}
+
+void plat_scroller_set(PlatControl *c, double value, double proportion)
+{
+    PortScroller *s = (PortScroller *)c->view;
+
+    if (c->tracking)
+        return;             /* the knob is in the user's hand */
+    s.knobProportion = proportion;
+    s.doubleValue = value;
+}
+
+void plat_scroller_knob(PlatControl *c, int *x, int *y)
+{
+    NSScroller *s = (NSScroller *)c->view;
+    NSRect k = [s rectForPart:NSScrollerKnob];
+
+    k = [s convertRect:k toView:s.superview];
+    *x = (int)(k.origin.x + k.size.width / 2);
+    *y = (int)(k.origin.y + k.size.height / 2);
+}
+
 void plat_control_destroy(PlatControl *c)
 {
     if (!c)
         return;
     @autoreleasepool {
+        if ([c->view isKindOfClass:[PortScroller class]]) {
+            ((PortScroller *)c->view).pc = NULL;
+            ((PortScroller *)c->view).target = nil;
+        }
         if (c->table) {
             [[NSNotificationCenter defaultCenter] removeObserver:g_ctl name:NSViewBoundsDidChangeNotification
                                                           object:((NSScrollView *)c->view).contentView];

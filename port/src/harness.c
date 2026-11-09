@@ -339,6 +339,30 @@ static void sclick_down(void)
     hold(2, sclick_up);
 }
 
+/* the scroll bars of top's windows: log them, or find the first with one shown */
+static Wnd *scrollbars(Wnd *w, int bar, int log)
+{
+    Wnd *c, *f;
+
+    for (c = w->child; c; c = c->next) {
+        int b;
+
+        if (c->destroyed)
+            continue;
+        for (b = 0; b < 2; b++)
+            if (c->sb[b].shown && wnd_visible(c)) {
+                if (log)
+                    port_harness_log("  sb %s %d %s range %d..%d pos %d%s", c->cls->name, c->id, b ? "V" : "H",
+                                     c->sb[b].min, c->sb[b].max, c->sb[b].pos, c->sb[b].view ? " (system's)" : "");
+                else if (b == bar)
+                    return c;
+            }
+        if ((f = scrollbars(c, bar, log)) != NULL)
+            return f;
+    }
+    return NULL;
+}
+
 static void skey_up(void)
 {
     push_key(0);
@@ -446,7 +470,34 @@ static void run(char *line)
         return;
     } else if (w && sscanf(line, "shot %199s", a) == 1)
         shot(w, a);
-    else if (!strncmp(line, "levels", 6)) {
+    else if (w && sscanf(line, "wsize %d %d", &x, &y) == 2) {
+        /* the window's new size, as if the user dragged its corner */
+        SetWindowPos(w->h, NULL, 0, 0, x, y, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        port_harness_log("  -> window %ld x %ld", (long)(w->rc.right - w->rc.left), (long)(w->rc.bottom - w->rc.top));
+    } else if (w && !strncmp(line, "sbs", 3))
+        scrollbars(w, 0, 1);
+    else if (w && w->plat && sscanf(line, "sdrag %d %d %d %d", &x, &y, &g_sx, &g_sy) == 4) {
+        RECT r;
+
+        /* a system drag in client coordinates, all of it at once */
+        wnd_client_fb(w, &r);
+        plat_inject_drag(w->plat, x + r.left, y + r.top, g_sx + r.left, g_sy + r.top, 12);
+    } else if (w && w->plat && sscanf(line, "sdragsb %199s %d", a, &x) == 2) {
+        /* drags the knob of the first H or V scroll bar to client x (H) or y (V) */
+        int bar = toupper((unsigned char)a[0]) == 'V' ? SB_VERT : SB_HORZ, kx = 0, ky = 0, ok = 0;
+        Wnd *c = scrollbars(w, bar, 0);
+        RECT r;
+
+        if (c && c->sb[bar].view) {
+            plat_scroller_knob(c->sb[bar].view, &kx, &ky);
+            ok = 1;
+        } else if (c)
+            ok = scroll_thumb_center(c, bar, &kx, &ky);
+        wnd_client_fb(w, &r);
+        if (ok)
+            plat_inject_drag(w->plat, kx, ky, bar == SB_HORZ ? x + r.left : kx, bar == SB_VERT ? x + r.top : ky, 12);
+        port_harness_log("  -> knob at %d %d %s", kx, ky, ok ? "dragged" : "not found");
+    } else if (!strncmp(line, "levels", 6)) {
         double fr, fh, mr, mh;
         float fp, mp;
 

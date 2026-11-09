@@ -118,6 +118,10 @@ typedef struct WndClass {
 typedef struct ScrollBar {
     int min, max, pos;
     int shown;
+    struct PlatControl *view;   /* the system's scroller, where there is one (peer.c) */
+    double value, proportion;   /* what it shows */
+    RECT rc;
+    int visible, enabled;
 } ScrollBar;
 
 typedef struct Wnd Wnd;
@@ -301,6 +305,9 @@ void peer_sync_all(void);
 void peer_focus(Wnd *w);
 int peer_paint(Wnd *w);     /* WM_PAINT of a control with a view: 1 if handled */
 int lb_serial(Wnd *w);      /* controls.c: changes when a list box's rows do */
+void peer_scrollbars_gone(Wnd *w);
+int wnd_scroll_page(Wnd *w, int bar);   /* wnd.c: what a page is (the client's size) */
+int scroll_thumb_center(Wnd *w, int bar, int *x, int *y);  /* controls.c: a drawn bar's thumb, framebuffer */
 void port_harness_log(const char *fmt, ...);
 int harness_cursor(POINT *pt);
 int harness_key(int vk);

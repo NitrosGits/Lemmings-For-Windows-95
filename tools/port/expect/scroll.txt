@@ -1,0 +1,5 @@
+  sb wndBMPClass 4660 H range 0..2066 pos 198 (system's)
+  sb wndBMPClass 4660 H range 0..2066 pos 278 (system's)
+  sb wndBMPClass 4660 H range 0..2066 pos 2066 (system's)
+  sb wndBMPClass 4660 H range 0..2066 pos 0 (system's)
+  sb wndBMPClass 4660 H range 0..2066 pos 1034 (system's)
