@@ -349,7 +349,7 @@ static void btn_paint(Wnd *w)
     if (type == BS_GROUPBOX) {
         int ty = f->height / 2;
 
-        gdi_fill(dc, &r, bg);
+        /* a group box draws only its frame and caption: the controls inside show through */
         gdi_frame3d(dc, &(RECT){0, ty, r.right - 1, r.bottom - 1}, sys_xrgb(COLOR_BTNSHADOW),
                     sys_xrgb(COLOR_BTNSHADOW));
         gdi_frame3d(dc, &(RECT){1, ty + 1, r.right, r.bottom}, sys_xrgb(COLOR_BTNHIGHLIGHT),

@@ -54,7 +54,7 @@ cat > $R/prefs/registry.txt <<EOF
 "Width"=dword:$(printf %08x $width)
 "Zoom"=dword:00000001
 EOF
-start="click $((243 + dx)) 232"
+start=${START-"click $((243 + dx)) 232"}   # START= stays on the title screen
 { echo "wait 3000"; echo "${start//;/\n}"; [[ -n $3 ]] && echo "${3//;/\n}"; echo "waitupd $2"; echo "shot end"; } > $R/CMD.TXT
 LEMMINGS_HARNESS=1 LEMMINGS_HARNESS_DIR=$R LEMMINGS_PREFS=$R/prefs LEMMINGS_SOUND=${SOUND:-0} LEMMINGS_MUSIC=${SOUND:-0} \
   $EXE --data $ORIG > $R/stderr.txt 2>&1 &

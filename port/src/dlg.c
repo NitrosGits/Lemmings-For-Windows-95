@@ -201,6 +201,9 @@ INT_PTR WINAPI DialogBoxParamA(HINSTANCE inst, LPCSTR name, HWND parent, DLGPROC
     }
     w->dlg = d;
     w->font = d->font;
+    /* as Windows' dialog manager: the dialog procedure hears of its font before the controls exist */
+    if (t->style & DS_SETFONT)
+        SendMessageA(h, WM_SETFONT, (WPARAM)d->font, 0);
     for (i = 0; i < t->count; i++) {
         const PortResControl *c = &t->controls[i];
         HWND ch2 = CreateWindowExA(0, c->cls, c->text ? c->text : "", c->style | WS_CHILD,
