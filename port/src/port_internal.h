@@ -17,6 +17,7 @@
 
 size_t port_strlcpy(char *dst, const char *src, size_t size);
 size_t port_strlcat(char *dst, const char *src, size_t size);
+void port_utf8(const char *s, char *out, size_t size);     /* the game's code page to UTF-8 */
 
 /* ---- Handles ----
  * Every handle the game sees (windows, DCs, GDI objects, menus, cursors,
@@ -292,6 +293,7 @@ void mci_quit(void);
 extern int port_harness;
 void harness_init(void);
 void harness_poll(void);
+void port_harness_log(const char *fmt, ...);
 int harness_cursor(POINT *pt);
 int harness_key(int vk);
 void harness_update(void);

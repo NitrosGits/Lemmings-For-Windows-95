@@ -1,10 +1,11 @@
 /*
- * Menus: menu objects from the resource tables, a Windows 95 style menu bar
- * drawn at the top of its window, drop-down lists drawn over the window, and
- * the modal loop that runs while a menu is open (as in Win32, the game's own
- * loop waits meanwhile). WM_INITMENU, WM_INITMENUPOPUP, WM_MENUSELECT (the
- * game shows help for the item in its status bar) and WM_COMMAND go to the
- * window.
+ * Menus: menu objects from the resource tables, and either the system's menu
+ * bar (macOS: the backend shows a window's menu there and asks for its items
+ * as it opens them) or a Windows 95 style menu bar drawn at the top of the
+ * window, with drop-down lists drawn over it and the modal loop that runs
+ * while one is open (as in Win32, the game's own loop waits meanwhile).
+ * WM_INITMENU, WM_INITMENUPOPUP, WM_MENUSELECT (the game shows help for the
+ * item in its status bar) and WM_COMMAND go to the window either way.
  */
 #include "port_internal.h"
 #include "port_res.h"
@@ -80,9 +81,22 @@ BOOL WINAPI DestroyMenu(HMENU h)
     return TRUE;
 }
 
+#define H32(h) ((uint32_t)(uintptr_t)(h))
+
+/* the bar changed: shown again, by the system or in the window */
+static void bar_changed(Wnd *w)
+{
+    if (plat_menubar_native())
+        plat_menubar_set(H32(w->h), H32(w->menu));
+    else
+        wnd_nc_paint(w);
+}
+
 void menu_destroy_bar(Wnd *w)
 {
     if (w->menu) {
+        if (plat_menubar_native())
+            plat_menubar_set(H32(w->h), 0);
         DestroyMenu(w->menu);
         w->menu = NULL;
     }
@@ -90,7 +104,7 @@ void menu_destroy_bar(Wnd *w)
 
 int menu_bar_height(Wnd *w)
 {
-    return w->menu && menu_get(w->menu) ? BAR_H : 0;
+    return w->menu && menu_get(w->menu) && !plat_menubar_native() ? BAR_H : 0;
 }
 
 HMENU WINAPI GetMenu(HWND h)
@@ -116,7 +130,7 @@ BOOL WINAPI SetMenu(HWND h, HMENU menu)
             return TRUE;
         wnd_redraw_all(w);
     }
-    wnd_nc_paint(w);
+    bar_changed(w);
     return TRUE;
 }
 
@@ -125,7 +139,7 @@ BOOL WINAPI DrawMenuBar(HWND h)
     Wnd *w = wnd_get(h);
 
     if (w)
-        wnd_nc_paint(w);
+        bar_changed(w);
     return w != NULL;
 }
 
@@ -180,7 +194,7 @@ BOOL WINAPI EnableMenuItem(HMENU h, UINT id, UINT flags)
     old = it->flags & (MF_GRAYED | MF_DISABLED);
     it->flags = (it->flags & ~(MF_GRAYED | MF_DISABLED)) | (flags & (MF_GRAYED | MF_DISABLED));
     if ((w = bar_owner(h)) != NULL && (flags & MF_BYPOSITION))
-        wnd_nc_paint(w);
+        bar_changed(w);
     return (BOOL)old;
 }
 
@@ -674,7 +688,7 @@ int menu_syskey(Wnd *top, WPARAM ch)
     PMenu *bar = top ? menu_get(top->menu) : NULL;
     int i;
 
-    if (!bar)
+    if (!bar || plat_menubar_native())
         return 0;
     if (!ch) {
         menu_track_bar(top, 0, 1);
@@ -696,4 +710,96 @@ int menu_key(Wnd *w, int vk, int ch)
 
 void menu_init(void)
 {
+}
+
+/* ---- The system's menu bar ---- */
+
+static int g_nativeLoop;        /* WM_ENTERMENULOOP sent */
+
+static Wnd *native_owner(uint32_t hwnd)
+{
+    Wnd *w = wnd_get((HWND)(uintptr_t)hwnd);
+
+    return w && !w->destroyed ? w : NULL;
+}
+
+int menu_native_count(uint32_t hmenu)
+{
+    PMenu *m = menu_get((HMENU)(uintptr_t)hmenu);
+
+    return m ? m->n : -1;
+}
+
+int menu_native_item(uint32_t hmenu, int pos, char *text, int size, unsigned *id, unsigned *flags, uint32_t *sub)
+{
+    PMenu *m = menu_get((HMENU)(uintptr_t)hmenu);
+    char plain[256];
+    const char *s;
+    size_t n = 0;
+
+    if (!m || pos < 0 || pos >= m->n)
+        return 0;
+    /* "E&xit" is "Exit", "&&" an '&'; a tab starts the shortcut text */
+    for (s = m->items[pos].text; *s && *s != '\t' && n + 1 < sizeof plain; s++) {
+        if (*s == '&' && s[1] != '&')
+            continue;
+        plain[n++] = *s;
+        if (*s == '&')
+            s++;
+    }
+    plain[n] = 0;
+    port_utf8(plain, text, (size_t)size);
+    *id = m->items[pos].id;
+    *flags = m->items[pos].flags;
+    *sub = H32(m->items[pos].sub);
+    return 1;
+}
+
+int menu_native_open(uint32_t hwnd, uint32_t parent, int pos, uint32_t sub)
+{
+    Wnd *w = native_owner(hwnd);
+
+    if (!w || (w->style & WS_DISABLED) || port_input_hook)
+        return 0;
+    if (!g_nativeLoop) {
+        g_nativeLoop = 1;
+        SendMessageA(w->h, WM_ENTERMENULOOP, 0, 0);
+        SendMessageA(w->h, WM_INITMENU, (WPARAM)w->menu, 0);
+        if (!native_owner(hwnd))
+            return 0;
+    }
+    if (parent == H32(w->menu))
+        menu_select(w, w->menu, (UINT)pos, MF_POPUP | MF_HILITE | MF_MOUSESELECT);
+    if (native_owner(hwnd))
+        SendMessageA(w->h, WM_INITMENUPOPUP, (WPARAM)(uintptr_t)sub, pos);
+    return native_owner(hwnd) != NULL;
+}
+
+void menu_native_select(uint32_t hwnd, uint32_t hmenu, unsigned idOrPos, unsigned flags)
+{
+    Wnd *w = native_owner(hwnd);
+
+    if (w && g_nativeLoop)
+        menu_select(w, (HMENU)(uintptr_t)hmenu, idOrPos, flags);
+}
+
+void menu_native_close(uint32_t hwnd)
+{
+    Wnd *w = native_owner(hwnd);
+
+    if (!g_nativeLoop)
+        return;
+    g_nativeLoop = 0;
+    if (w) {
+        menu_select(w, NULL, 0, 0xffff);
+        SendMessageA(w->h, WM_EXITMENULOOP, 0, 0);
+    }
+}
+
+void menu_native_command(uint32_t hwnd, unsigned id)
+{
+    Wnd *w = native_owner(hwnd);
+
+    if (w && !(w->style & WS_DISABLED) && menu_item_enabled(w->menu, id))
+        PostMessageA(w->h, WM_COMMAND, MAKEWPARAM(id, 0), 0);
 }

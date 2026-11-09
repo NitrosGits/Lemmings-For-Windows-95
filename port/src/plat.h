@@ -78,6 +78,14 @@ void *plat_cursor_image(const uint32_t *argb, int w, int h, int hx, int hy);
 void plat_cursor_set(void *c);              /* NULL hides it */
 void plat_cursor_show(int show);
 
+/* ---- The system's menu bar (macOS) ----
+ * With one, a window's menu goes there instead of being drawn in the window
+ * (menu.c). Menus and windows are passed as their 32-bit handles. */
+int plat_menubar_native(void);
+void plat_menubar_set(uint32_t hwnd, uint32_t hmenu);   /* hmenu 0: hwnd's menu goes */
+/* the harness: chooses "Menu/Item" (the application menu is "App") */
+int plat_menu_choose(const char *path);
+
 /* ---- Sound: streams mixed to the default output ---- */
 int plat_audio_open(void);
 void plat_audio_close(void);
@@ -102,5 +110,17 @@ void input_window_exposed(struct Wnd *w);
 void input_app_deactivated(void);
 void input_quit(void);
 void input_command(int id);                 /* a menu command to the main window */
+void input_tracking_idle(void);             /* now and then while the system tracks a menu or drag */
+
+/* ---- What a system menu bar asks and reports (menu.c) ---- */
+int menu_native_count(uint32_t hmenu);      /* -1: no such menu */
+/* item pos: its text (UTF-8, without '&'), command, MF_* flags and submenu */
+int menu_native_item(uint32_t hmenu, int pos, char *text, int size, unsigned *id, unsigned *flags,
+                     uint32_t *sub);
+/* sub (item pos of parent) is opening: WM_INITMENU(POPUP); 0 if hwnd can't take commands now */
+int menu_native_open(uint32_t hwnd, uint32_t parent, int pos, uint32_t sub);
+void menu_native_select(uint32_t hwnd, uint32_t hmenu, unsigned idOrPos, unsigned flags);
+void menu_native_close(uint32_t hwnd);
+void menu_native_command(uint32_t hwnd, unsigned id);
 
 #endif

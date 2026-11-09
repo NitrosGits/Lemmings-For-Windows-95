@@ -10,9 +10,9 @@ target_sources(winsdl PRIVATE ${CMAKE_SOURCE_DIR}/port/macos/midi_coreaudio.c)
 target_include_directories(winsdl PRIVATE ${CMAKE_SOURCE_DIR}/port/src)
 target_link_libraries(winsdl PUBLIC "-framework AudioToolbox" "-framework CoreFoundation")
 if(LEMMINGS_BACKEND STREQUAL "cocoa")
-  target_sources(winsdl PRIVATE ${CMAKE_SOURCE_DIR}/port/macos/plat_cocoa.m
-                                ${CMAKE_SOURCE_DIR}/port/macos/audio_coreaudio.c)
-  set_source_files_properties(${CMAKE_SOURCE_DIR}/port/macos/plat_cocoa.m PROPERTIES COMPILE_OPTIONS -fobjc-arc)
+  set(COCOA_SRC ${CMAKE_SOURCE_DIR}/port/macos/plat_cocoa.m ${CMAKE_SOURCE_DIR}/port/macos/menu_cocoa.m)
+  target_sources(winsdl PRIVATE ${COCOA_SRC} ${CMAKE_SOURCE_DIR}/port/macos/audio_coreaudio.c)
+  set_source_files_properties(${COCOA_SRC} PROPERTIES COMPILE_OPTIONS -fobjc-arc)
   target_link_libraries(winsdl PUBLIC "-framework AppKit" "-framework QuartzCore" "-framework CoreGraphics"
                                       "-framework CoreAudio")
 endif()

@@ -606,6 +606,25 @@ void plat_cursor_show(int show)
         SDL_HideCursor();
 }
 
+/* ---- The menu bar: drawn in the window by menu.c ---- */
+
+int plat_menubar_native(void)
+{
+    return 0;
+}
+
+void plat_menubar_set(uint32_t hwnd, uint32_t hmenu)
+{
+    (void)hwnd;
+    (void)hmenu;
+}
+
+int plat_menu_choose(const char *path)
+{
+    (void)path;
+    return 0;
+}
+
 /* ---- Sound ---- */
 
 static SDL_AudioDeviceID g_dev;

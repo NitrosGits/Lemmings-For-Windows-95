@@ -8,22 +8,12 @@
  * Screen coordinates for the layer have their origin at the top left of the
  * main display (screens[0]); AppKit's are bottom-left. Both use points.
  */
-#import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 #include <mach/mach_time.h>
 #include <sys/stat.h>
 
-/* the layer's Win32 headers, with the names AppKit's headers also have
-   renamed (this file uses none of the Win32 ones) */
-#define BOOL WINBOOL
-#define LoadResource Win32_LoadResource
-#undef FSHIFT
-#include "port_internal.h"
-#undef BOOL
-#undef LoadResource
+#include "cocoa_win32.h"
 #include "keycodes.h"
-
-void cocoa_menu_init(void);
 
 @class PortWindow, PortView;
 
@@ -380,26 +370,6 @@ static PortAppDelegate *g_appDelegate;
 }
 @end
 
-/* the application menu; the game's own menus join it in the menu bar */
-void cocoa_menu_init(void)
-{
-    NSMenu *bar = [NSMenu new], *app = [NSMenu new];
-    NSMenuItem *item = [NSMenuItem new], *i;
-
-    item.submenu = app;
-    [bar addItem:item];
-    i = [app addItemWithTitle:@"About Lemmings" action:@selector(about:) keyEquivalent:@""];
-    i.target = g_appDelegate;
-    [app addItem:[NSMenuItem separatorItem]];
-    [app addItemWithTitle:@"Hide Lemmings" action:@selector(hide:) keyEquivalent:@"h"];
-    i = [app addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
-    i.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
-    [app addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
-    [app addItem:[NSMenuItem separatorItem]];
-    [app addItemWithTitle:@"Quit Lemmings" action:@selector(terminate:) keyEquivalent:@"q"];
-    NSApp.mainMenu = bar;
-}
-
 void plat_init(void)
 {
     @autoreleasepool {
@@ -410,7 +380,7 @@ void plat_init(void)
         NSApp.delegate = g_appDelegate;
         g_delegate = [PortWindowDelegate new];
         g_injected = [NSMutableArray new];
-        cocoa_menu_init();
+        cocoa_menu_init(g_appDelegate);
         [NSApp finishLaunching];
         [NSApp activateIgnoringOtherApps:YES];
     }
@@ -603,6 +573,8 @@ void plat_window_destroy(PlatWindow *p)
     @autoreleasepool {
         if (p->owner && p->showing && p->win.parentWindow)
             [p->win.parentWindow removeChildWindow:p->win];
+        if (p->wnd)
+            plat_menubar_set((uint32_t)(uintptr_t)p->wnd->h, 0);
         p->win.plat = NULL;
         p->view.plat = NULL;
         [p->win orderOut:nil];

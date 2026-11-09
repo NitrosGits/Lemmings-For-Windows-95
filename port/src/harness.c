@@ -432,6 +432,9 @@ static void run(char *line)
         return;
     } else if (w && sscanf(line, "shot %199s", a) == 1)
         shot(w, a);
+    else if (sscanf(line, "smenu %199[^\n]", a) == 1)
+        /* the system's menu bar: "File/Exit", "App/Quit Lemmings" */
+        port_harness_log("  smenu %s: %s", a, plat_menu_choose(a) ? "chosen" : "not found or disabled");
     else if (w && w->plat && sscanf(line, "wshot %190s", a) == 1) {
         char fn[1300];
 

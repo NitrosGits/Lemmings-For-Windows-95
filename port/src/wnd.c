@@ -1724,7 +1724,7 @@ int WINAPI GetSystemMetrics(int index)
     case SM_CYCURSOR:
         return 32;
     case SM_CYMENU:
-        return 19;
+        return plat_menubar_native() ? 0 : 19;
     case SM_CXSIZE:
     case SM_CYSIZE:
         return 18;

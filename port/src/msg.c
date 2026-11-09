@@ -536,6 +536,11 @@ void input_command(int id)
         msg_post(m->h, WM_COMMAND, (WPARAM)id, 0);
 }
 
+void input_tracking_idle(void)
+{
+    msg_present();
+}
+
 int msg_pump(int wait)
 {
     return plat_pump(wait);
