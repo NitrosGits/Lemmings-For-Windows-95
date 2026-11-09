@@ -276,3 +276,15 @@ Running `colour_trace_fn.py` on `Builder::Process` (driver call 1) reveals the e
   - `tools/msvc/c2dbg/cands_fn.py SRC HIT` maps every 0x4xxx candidate id to its symbol. C2's candidate bucket is `symbol->[+0x20] & 31`, a per-file declaration sequence number (names never matter; externs before the function and locals declared before a variable shift it), and ids follow bucket order, so the simplify worklist order of named variables is set by declaration order mod 32.
   - `tools/msvc/c2dbg/spillcost_fn.py SRC FUNC_INDEX` prints every simplify removal with degree, spill cost and metric (h=0: cost*100/initial degree; spill picks marked `*`). Cost = sum over references of benefit (sub_4180c0: about 1 for a register copy, 2 for a constant store, 4 for a load/use/inc) x loop weight (1/5/25/125 by flow-graph loop depth; `do{}while(0)` wrappers do not count).
   - Lever found: a second copy definition of a variable in the other branch (merged back into one instruction by C2) adds its benefit again and makes it dearer to spill, with no code change.
+
+### 5.12 Claude (s43, 2026-11-09): Map::AddTrapType AND Map::AddObjectType MATCHED - PROCESS 206/206
+- **Fix (`src/process/map.cpp`, both functions):** no running `fx` variable at all. The x field is computed from the loop index, and C2's loop strength reduction builds the accumulator itself:
+  ```cpp
+  for (i = 0; i < count; i++) {
+      list->frames[i].x = (WORD)((x + i * w) * g_scale);
+      ...
+  }
+  ```
+  This explains every odd detail in section 3.1 at once: the induction variable for `x + i * w` only needs 16 bits (the product is stored into a WORD), so its start value is the 16-bit load `mov ax,[x]` and its update is the narrowed `add ax,cx`; the step `w` is sign-extended once into ecx and hoisted (`movsx ecx,bx`); the multiply sees the int expression, so it is g_scale-first (`mov ebp,[g]; imul bp,ax`); and the `movsx eax,ax` right before the add is the IV update's own widening. The `switch ((char)fx)` workarounds are gone.
+- The now-unused `int fx; int current;` locals stay declared: without them neither function matches (they set the in-function symbol numbering; padplan with up to 40 lines before each function found no match). Removing the two `switch` statements shifted the symbol sequence of the later map.cpp functions; 19 `pad_maptrap` externs before `ClipRect` restore all of them (sweep `build/scratch/s43_claude/map/pads.py`, only 19 gives 23/23).
+- Verified: `try.sh PROCESS.DLL src/process/map.cpp` 23/23 (4128/4128 B); `build.py --funcs PROCESS` 206/206; mapcmp .data 0 / .bss 46 (pre-existing); `make` exit 0; Wine HD all 8 rebuilt modules `s43-map-l1` MATCH (301 updates) and `s43-map-dig` MATCH (403 updates).

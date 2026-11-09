@@ -2900,3 +2900,33 @@ Antigravity's last Builder test (`s59_antigravity/builder_test.cpp`) equals prod
 | PROCESS | map.cpp | 21/23 |
 | PROCESS | complete: basher.cpp, blocker.cpp, builder.cpp, climber.cpp, default.cpp, digger.cpp, drowner.cpp, exploder.cpp, explosion.cpp, faller.cpp, flapper.cpp, flipper.cpp, floater.cpp, frier.cpp, homer.cpp, lemmings.cpp, miner.cpp, script.cpp, shrugger.cpp, splatter.cpp, walker.cpp, objects.cpp, process.cpp, sound.cpp, wave.cpp, dllentry.cpp | all |
 | LEMMINGS | complete: winmain.cpp, options.cpp, about.cpp, mainwnd.cpp, idle.cpp, statusbar.cpp, gameview.cpp, frontend.cpp, settings.cpp, frame.cpp, endscreen.cpp, levelsel.cpp, treelist.cpp, midi.cpp, splash.cpp, replay.cpp, window.cpp, dockwnd.cpp, icons.cpp, map.cpp, user.cpp, registry.cpp, register.cpp | all |
+
+### Claude session 42 (continued): Map::AddTrapType / AddObjectType - PAUSED (user hit usage limit), no source change
+- User request: work on both remaining PROCESS functions, using matched Map:: functions as references. No other matched function builds a sprite list (only these two; `GetGraphics` is the nearest), so the references are each other: **both originals compile to the identical loop** (`mov ax,[x]` init; `mov ebp,[g_scale]; imul bp,ax; movsx eax,ax; add ax,cx; mov [edx-8],bp`; `movsx ecx,w` hoisted), differing only in register numbering. So they were probably written the same way; our two versions use different workarounds (AddObjectType int x init, 8; AddTrapType `(short)x` init, 6). Side-by-sides in `build/scratch/s42_claude/map/{aot,att}_v.txt` (right column = original).
+- **Next idea to test (not tried before, per a scratch grep):** no running `fx` variable at all: `list->frames[i].x = (x + i * w) * g_scale` (with WORD/short casts in various places), letting C2's induction-variable strength reduction create the 16-bit accumulator. That could explain why the multiply looks int (g_scale-first) while the accumulator's add and initial load are narrowed. Write the test in a standalone copy of map.cpp, sweep cast placements on both functions, and keep the 288-byte frame.
+
+### Claude session 43 (2026-11-09): Map::AddTrapType AND Map::AddObjectType MATCHED (PROCESS 206/206, total 696/696)
+- **Fix (`src/process/map.cpp`):** s42's untested idea worked on the first sweep (`build/scratch/s43_claude/map/sr1.txt`, all 8 cast spellings match AddTrapType): no running `fx`; both loops are `for (i = 0; i < count; i++) { list->frames[i].x = (WORD)((x + i * w) * g_scale); ... }`. C2's strength reduction makes the 16-bit accumulator itself (`mov ax,[x]` start, hoisted `movsx ecx,bx` step, `movsx eax,ax; add ax,cx` update, g_scale-first int multiply), which is why no declared `fx` type could give both the int multiply and the narrowed add. The `switch ((char)fx)` workarounds are removed.
+- The unused `int fx; int current;` stay declared (without them neither function matches; padplan up to 40 lines found nothing). Removing the switches shifted later map.cpp functions; `extern int pad_maptrap0..18` (19) before `ClipRect` restores all 23 (`map/pads.py`: 0..39 pads x with/without locals, only 19 gives 23/23).
+- **Verification:** `try.sh PROCESS.DLL src/process/map.cpp` 23/23 (4128/4128 B); `build.py --funcs PROCESS` 206/206; `mapcmp PROCESS --sec .data` 0, `--sec .bss` 46 (pre-existing); `make` exit 0; Wine HD, all 8 rebuilt modules: `build/runs/s43-map-l1` MATCH (first 301 updates vs hd-base-l1), `s43-map-dig` MATCH (first 403 updates vs hd-base-dig). No Fun-level/chooser run (needs the user's OK per the standing rule). PROCESS.md 5.12 has the mechanism.
+- map.cpp handed back (AGENTS.md Claude focus line).
+- Runtime coverage: level 1 and the digger run load entrance/exit objects (AddObjectType) but probably no traps, so AddTrapType had no Wine coverage; it is the same rewrite as AddObjectType and equal in the low 16 bits (`(x + i * w)` mod 2^16 vs the old per-step `(short)` truncation give the same WORD after `* g_scale`). A trap level run needs the user's OK.
+- Whole PROCESS.DLL image diff now 2,560 bytes (s59: 2,962); with every function matching, what remains is the header, import tables and relocated addresses (build.py lists them per function).
+- Fresh `build.py --funcs` for all 8 modules (`build/scratch/s43_claude/logs/`):
+
+| Module | Functions matching |
+|---|---|
+| VSMEM | 11/11 |
+| READDIB | 17/17 |
+| FILEHAND | 7/7 |
+| GAMEOVER | 3/3 |
+| LOADLVL | 41/41 |
+| RENDER | 77/77 |
+| PROCESS | 206/206 |
+| LEMMINGS | 334/334 |
+| **Total** | **696/696 (100%)** |
+
+| Module | File | Functions matching |
+|---|---|---|
+| PROCESS | complete: basher.cpp, blocker.cpp, builder.cpp, climber.cpp, default.cpp, digger.cpp, drowner.cpp, exploder.cpp, explosion.cpp, faller.cpp, flapper.cpp, flipper.cpp, floater.cpp, frier.cpp, homer.cpp, lemmings.cpp, miner.cpp, script.cpp, shrugger.cpp, splatter.cpp, walker.cpp, map.cpp, objects.cpp, process.cpp, sound.cpp, wave.cpp, dllentry.cpp | all |
+| LEMMINGS | complete: winmain.cpp, options.cpp, about.cpp, mainwnd.cpp, idle.cpp, statusbar.cpp, gameview.cpp, frontend.cpp, settings.cpp, frame.cpp, endscreen.cpp, levelsel.cpp, treelist.cpp, midi.cpp, splash.cpp, replay.cpp, window.cpp, dockwnd.cpp, icons.cpp, map.cpp, user.cpp, registry.cpp, register.cpp | all |

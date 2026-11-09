@@ -29,7 +29,7 @@ extern int pad_addobjecttype0, pad_addobjecttype1, pad_addobjecttype2, pad_addob
 int Map::AddObjectType(WORD renderer, WORD slot, int x, int y, int w, int h, int count)
 {
     int i;
-    int fx;
+    int fx;         /* unused; keeps VC++ 2.2's symbol numbering */
     int n = numTypes;
     OBJTYPE *t = &types[n];
     SPRITELIST *list;
@@ -41,13 +41,9 @@ int Map::AddObjectType(WORD renderer, WORD slot, int x, int y, int w, int h, int
     list->count = (WORD)count;
     list->slot = slot;
     if (more) {
-        for (i = 0, fx = x; i < count; i++, fx = current + (short)w) {
-            { WORD v = (WORD)(fx * g_scale); list->frames[i].x = v; }
-            current = (short)fx;
-#ifdef _MSC_VER
-            /* Retain a byte-register use for VC++ 2.2 allocation. */
-            switch ((char)fx) { case 1: break; }
-#endif
+        /* The compiler turns x + i * w into a 16-bit running sum. */
+        for (i = 0; i < count; i++) {
+            list->frames[i].x = (WORD)((x + i * w) * g_scale);
             { WORD v = (WORD)(y * g_scale); list->frames[i].y = v; }
             { WORD v = (WORD)(w * g_scale); list->frames[i].width = v; }
             { WORD v = (WORD)(h * g_scale); list->frames[i].height = v; }
@@ -71,7 +67,7 @@ SPRITELIST *list;
     int i;
     int n = numTypes;
     OBJTYPE *t = &types[n];
-    int fx;
+    int fx;         /* unused; keeps VC++ 2.2's symbol numbering */
     int current;
 
     list = NewSpriteList(count);
@@ -79,12 +75,8 @@ SPRITELIST *list;
     list->count = (WORD)count;
     list->slot = slot;
     if (more) {
-        for (i = 0, fx = (short)x; i < count; i++, fx = current + (short)w) {
-            { WORD v = (WORD)(fx * g_scale); list->frames[i].x = v; }
-            current = (short)fx;
-#ifdef _MSC_VER
-            switch ((char)fx) { case 1: break; }
-#endif
+        for (i = 0; i < count; i++) {
+            list->frames[i].x = (WORD)((x + i * w) * g_scale);
             { WORD v = (WORD)(y * g_scale); list->frames[i].y = v; }
             { WORD v = (WORD)(w * g_scale); list->frames[i].width = v; }
             { WORD v = (WORD)(h * g_scale); list->frames[i].height = v; }
@@ -99,6 +91,9 @@ SPRITELIST *list;
     numTypes++;
     return n;
 }
+
+/* Symbol padding (see docs/DECOMP.md). */
+extern int pad_maptrap0, pad_maptrap1, pad_maptrap2, pad_maptrap3, pad_maptrap4, pad_maptrap5, pad_maptrap6, pad_maptrap7, pad_maptrap8, pad_maptrap9, pad_maptrap10, pad_maptrap11, pad_maptrap12, pad_maptrap13, pad_maptrap14, pad_maptrap15, pad_maptrap16, pad_maptrap17, pad_maptrap18;
 
 /* 0x100049a0: clips a rectangle to the given bounds; returns whether it was cut */
 static int ClipRect(int *x, int *y, int *width, int *height, int *skipX, int *skipY,
