@@ -57,7 +57,7 @@ Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are
 │   ├── vsmem/         # VSMEM.DLL source code
 │   ├── filehand/      # FILEHAND.DLL source code
 │   └── gameover/      # GAMEOVER.DLL source code
-├── port/              # Native 64-bit port: the Win32 subset on SDL3 (see PORTING.md)
+├── port/              # Native 64-bit port: the Win32 subset on the system's toolkit (see PORTING.md)
 │   ├── include/       # windows.h, mmsystem.h for the game's sources
 │   ├── src/           # the platform layer
 │   └── macos/         # macOS only: Core Audio music, app bundle
@@ -70,7 +70,7 @@ Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are
 │   ├── DECOMP.md      # Detailed reverse-engineering methodology & compiler notes
 │   └── C2_REGALLOC.md # Annotated map of C2.EXE graph-colouring register allocator
 ├── Makefile           # Portable MinGW build system
-├── CMakeLists.txt     # Native 64-bit build (SDL3)
+├── CMakeLists.txt     # Native 64-bit build (macOS: AppKit, Core Audio)
 ├── PORTING.md         # The native port: inventory, design, status
 └── HANDOFF.md         # Detailed decompilation ledger & session logs
 ```
@@ -152,22 +152,22 @@ On Windows, use `python` or `py -3` if `python3` is not available. On macOS and 
 
 Tested on Windows 11 (ARM64, in a VM) with a python.org Python and llvm-mingw: the matching build gives the same results as on macOS, and `make` produces the same binaries apart from their timestamps. GitHub Actions also builds natively on Windows with llvm-mingw and MSYS2's `make` and Python on every push. MSYS2's MINGW32 GCC built it there too (November 2026). The matching tools have not been tried with MSYS2's Python. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
 
-### 5. Native 64-bit Build (SDL3, branch `macOS-64`)
+### 5. Native 64-bit Build (macOS, branch `macOS-64`)
 
-On the `macOS-64` branch the game also builds as a native 64-bit program on [SDL3](https://libsdl.org): the decompiled sources (changed only under `#ifdef PORT_SDL`, so the two builds above are unaffected) on a platform layer in `port/` that implements the part of Win32 the game uses. The original windows, menus and dialogs are all there; the music plays through Core Audio's built-in synthesizer. [PORTING.md](PORTING.md) has the design and the status.
+On the `macOS-64` branch the game also builds as a native 64-bit macOS program: the decompiled sources (changed only under `#ifdef PORT_SDL`, so the two builds above are unaffected) on a layer in `port/` that implements the part of Win32 the game uses, on the system's own toolkit. Its windows are AppKit windows, its menus are in the macOS menu bar, its dialogs use AppKit's controls, and sound effects and music play through Core Audio (the music on its built-in synthesizer). It needs no library beyond the system's. [PORTING.md](PORTING.md) has the design and the status.
 
-macOS (Apple silicon), with [Homebrew](https://brew.sh):
+macOS (Apple silicon), with Apple's command line tools (`xcode-select --install`) and [Homebrew](https://brew.sh):
 ```bash
-brew install sdl3 cmake ninja
+brew install cmake ninja
 cmake -S . -B build/native -G Ninja
 cmake --build build/native
 build/native/lemmings --data orig/WINLEMM     # the original game's folder
 ```
 The game finds its data from `--data`, the `LEMMINGS_DATA` variable, or a `WINLEMM` folder next to it. It never writes there: settings (the registry) and the players' progress go to `~/Library/Application Support/Visual Sciences/Lemmings`.
 
-`-DLEMMINGS_MACOS_BUNDLE=ON` builds `Lemmings.app` with its own copy of SDL3 instead; copy the `WINLEMM` folder into `Lemmings.app/Contents/Resources` to play it from the Finder. The [macOS build workflow](.github/workflows/macos-build.yml) builds it on every push to `macOS-64` (artifact `lemmings-macos-arm64`).
+`-DLEMMINGS_MACOS_BUNDLE=ON` builds `Lemmings.app` instead; copy the `WINLEMM` folder into `Lemmings.app/Contents/Resources` to play it from the Finder. The [macOS build workflow](.github/workflows/macos-build.yml) builds it on every push to `macOS-64` (artifact `lemmings-macos-arm64`).
 
-`tools/port/run.sh NAME UPDATES 'commands' BASELINE` plays the game under the layer's test harness (the commands of `tools/wine/run.sh`) and compares its lemming log with a log of the original game, e.g. `tools/port/run.sh l1 300 '' build/runs/hd-base-l1.txt`.
+`tools/port/run.sh NAME UPDATES 'commands' BASELINE` plays the game under the layer's test harness (the commands of `tools/wine/run.sh`) and compares its lemming log with a log of the original game, e.g. `tools/port/run.sh l1 300 '' build/runs/hd-base-l1.txt`; `tools/port/checks.sh` runs all the checks of PORTING.md, section 8.
 
 ---
 

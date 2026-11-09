@@ -5,9 +5,9 @@
 #   build/native/lemmings --data orig/WINLEMM
 #
 # The 7 DLLs become static libraries linked into one executable with the
-# Win32 layer (port/src) and the platform's backend: AppKit and Core Audio on
-# macOS (port/macos), SDL3 elsewhere for now. The 32-bit builds (Makefile,
-# tools/msvc) are separate and unchanged.
+# Win32 layer (port/src) and the platform's own backend: AppKit and Core Audio
+# on macOS (port/macos). Other systems get theirs later (PORTING.md, 9). The
+# 32-bit builds (Makefile, tools/msvc) are separate and unchanged.
 
 cmake_minimum_required(VERSION 3.21)
 project(Lemmings VERSION 1.0 LANGUAGES C CXX)
@@ -16,16 +16,11 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
 
-if(APPLE)
-  set(LEMMINGS_BACKEND cocoa CACHE STRING "The platform backend: cocoa or sdl")
-else()
-  set(LEMMINGS_BACKEND sdl CACHE STRING "The platform backend: cocoa or sdl")
+if(NOT APPLE)
+  message(FATAL_ERROR "The native build has a backend for macOS only so far (PORTING.md, section 9): "
+                      "Windows builds use the Makefile, Linux gets a GTK backend later.")
 endif()
-if(LEMMINGS_BACKEND STREQUAL "cocoa")
-  enable_language(OBJC)
-else()
-  find_package(SDL3 3.2 REQUIRED CONFIG)
-endif()
+enable_language(OBJC)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # ---- The resources: lemmings.rc as C tables ----
@@ -39,27 +34,20 @@ add_custom_command(
   COMMENT "Converting lemmings.rc")
 
 # ---- The Win32 layer ----
-add_library(winsdl OBJECT
+add_library(winlayer OBJECT
   port/src/core.c port/src/file.c port/src/reg.c port/src/gdi.c port/src/font.c
   port/src/wnd.c port/src/msg.c port/src/res.c port/src/menu.c port/src/dlg.c
   port/src/controls.c port/src/peer.c port/src/wave.c port/src/mci.c port/src/harness.c
   ${RES_C})
-set_target_properties(winsdl PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS ON)
-target_include_directories(winsdl PUBLIC port/include PRIVATE port/src)
+set_target_properties(winlayer PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS ON)
+target_include_directories(winlayer PUBLIC port/include PRIVATE port/src)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
-  target_compile_options(winsdl PRIVATE -Wall -Wno-unused-function -Wno-unused-parameter)
-endif()
-if(NOT LEMMINGS_BACKEND STREQUAL "cocoa")
-  target_sources(winsdl PRIVATE port/src/plat_sdl.c)
-  target_link_libraries(winsdl PUBLIC SDL3::SDL3)
+  target_compile_options(winlayer PRIVATE -Wall -Wno-unused-function -Wno-unused-parameter)
 endif()
 
-# The backend, sound and MIDI synthesizer: the platform's own (PORTING.md, section 3)
-if(APPLE)
-  include(port/macos/macos.cmake)
-else()
-  target_sources(winsdl PRIVATE port/src/midi_none.c)
-endif()
+# The backend: windows, input, menus, controls, sound and the MIDI synthesizer
+# are the platform's own (PORTING.md, section 3)
+include(port/macos/macos.cmake)
 
 # ---- The game ----
 # What every game source gets: the layer's Win32 headers first, the original
@@ -101,9 +89,7 @@ game_module(process SOURCES ${PROCESS_SRC}
 file(GLOB LEMMINGS_SRC CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/lemmings/*.cpp)
 game_module(lemmings_exe SOURCES ${LEMMINGS_SRC} DEFINES PORT_MODULE_RAND=port_exe_seed)
 
-add_executable(lemmings $<TARGET_OBJECTS:winsdl>)
+add_executable(lemmings $<TARGET_OBJECTS:winlayer>)
 # in dependency order, for linkers that read archives once
-target_link_libraries(lemmings PRIVATE lemmings_exe process loadlvl render readdib filehand gameover vsmem winsdl)
-if(APPLE)
-  lemmings_macos_target(lemmings)
-endif()
+target_link_libraries(lemmings PRIVATE lemmings_exe process loadlvl render readdib filehand gameover vsmem winlayer)
+lemmings_macos_target(lemmings)

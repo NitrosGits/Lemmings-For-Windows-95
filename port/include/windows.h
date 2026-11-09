@@ -1,6 +1,6 @@
 /*
  * The part of the Win32 API that Lemmings for Windows 95 uses, for the native
- * SDL3 build (PORTING.md). Types have their Win64 sizes: BYTE/WORD/DWORD/LONG/
+ * 64-bit build (PORTING.md). Types have their Win64 sizes: BYTE/WORD/DWORD/LONG/
  * UINT/BOOL are 8/16/32/32/32/32 bits, WPARAM/LPARAM/LRESULT and the *_PTR
  * types are as wide as a pointer. Structures the game reads from files have
  * the SDK's exact layout. Constants have the SDK's values (the resource

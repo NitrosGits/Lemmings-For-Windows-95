@@ -1,11 +1,12 @@
 /*
- * Windows. A top-level window (no WS_CHILD) is an SDL window with a 32-bit
- * framebuffer the size of its content; its children are areas of that
- * framebuffer. The SDL window's content is the whole Win32 window: its
- * caption and frame are the system's, outside it, so a top-level window's
- * non-client area is only what the layer draws itself (the menu bar, the
- * 1-pixel border of a popup). Child windows have Win32 non-client parts:
- * borders and scroll bars.
+ * Windows. A top-level window (no WS_CHILD) is a system window (plat.h) with
+ * a 32-bit framebuffer the size of its content; its children are areas of
+ * that framebuffer. The system window's content is the whole Win32 window:
+ * its caption and frame are the system's, outside it, so a top-level window's
+ * non-client area is only what the layer draws itself (the menu bar where the
+ * system has none, the 1-pixel border of a popup). Child windows have Win32
+ * non-client parts: borders and scroll bars. A dialog's standard controls
+ * can be system views instead (peer.c).
  */
 #include "port_internal.h"
 
@@ -563,7 +564,7 @@ static void nc_paint_tree(Wnd *w)
             nc_paint_tree(c);
 }
 
-/* ---- Top-level windows' SDL side ---- */
+/* ---- Top-level windows' system side ---- */
 
 void wnd_surface_resize(Wnd *w, int width, int height)
 {
@@ -600,7 +601,7 @@ void wnd_surface_resize(Wnd *w, int width, int height)
     w->dirty = 1;
 }
 
-static void top_create_sdl(Wnd *w)
+static void top_create_plat(Wnd *w)
 {
     int width = w->rc.right - w->rc.left, height = w->rc.bottom - w->rc.top, flags = 0;
     char title[512];
@@ -627,7 +628,7 @@ static void top_create_sdl(Wnd *w)
     wnd_surface_resize(w, width, height);
 }
 
-static void top_destroy_sdl(Wnd *w)
+static void top_destroy_plat(Wnd *w)
 {
     if (w->plat)
         plat_window_destroy(w->plat);
@@ -828,7 +829,7 @@ HWND WINAPI CreateWindowExA(DWORD exStyle, LPCSTR clsName, LPCSTR name, DWORD st
         if (!w->menu && cls->wc.lpszMenuName)
             w->menu = LoadMenuA(inst, cls->wc.lpszMenuName);
         link_top(w);
-        top_create_sdl(w);
+        top_create_plat(w);
     }
     port_trace("CreateWindow %s '%s' %08x -> %p", cls->name, w->text, style, (void *)w->h);
     memset(&cs, 0, sizeof cs);
@@ -900,7 +901,7 @@ static void free_tree(Wnd *w)
         w->ctlFree(w);
     if (!w->parent) {
         menu_destroy_bar(w);
-        top_destroy_sdl(w);
+        top_destroy_plat(w);
         free(w->fb.bits);
         w->fb.bits = NULL;
     }
@@ -1160,7 +1161,7 @@ HWND WINAPI SetParent(HWND h, HWND parent)
     if (p) {
         /* a top-level window becomes a child: it keeps its numbers, now in the parent's client */
         if (!old) {
-            top_destroy_sdl(w);
+            top_destroy_plat(w);
             free(w->fb.bits);
             memset(&w->fb, 0, sizeof w->fb);
         }
@@ -1173,7 +1174,7 @@ HWND WINAPI SetParent(HWND h, HWND parent)
     } else {
         link_top(w);
         w->owner = old ? wnd_toplevel(old) : NULL;
-        top_create_sdl(w);
+        top_create_plat(w);
         if (vis) {
             plat_window_show(w->plat, 1, 0);
             wnd_redraw_all(w);

@@ -1,27 +1,35 @@
-# Native 64-bit port (SDL3)
+# Native 64-bit port
 
 This file plans and tracks the native port of Lemmings for Windows 95 to 64-bit
-macOS, Linux and Windows on top of [SDL3](https://libsdl.org). It lives on the
-permanent branches `macOS-64`, `linux-64` and `windows-64`, never on `main`.
-The port is written on `macOS-64` and merged from there into the other two.
+macOS, Linux and Windows, each on the system's own toolkit (macOS: AppKit and
+Core Audio). It lives on the permanent branches `macOS-64`, `linux-64` and
+`windows-64`, never on `main`. The port is written on `macOS-64`.
 
 `main` stays the byte-matching decompilation. The port must not change what
 Visual C++ 2.2 or the 32-bit MinGW build (`make`) compile, so both keep working
 on these branches too.
 
-**Status (2026-11-09):** the game builds as a native arm64 macOS program and
-plays: title screen, registration, player and level dialogs, options, About,
-level 1, the end screen, music (Core Audio) and sound effects. Checked against
-the original game's reference logs (`tools/port/run.sh`, section 8): level 1,
-the digger replay and a nuke to the end of the level all MATCH. Visual C++ 2.2
-still matches all 696 functions with the port's source changes, and the MinGW
-build is unchanged. The input path was exercised with real SDL mouse and key
-events (section 8), but nobody has played it by hand yet; floating
-(undocked) tool windows are untried, and so are `linux-64` and `windows-64`.
+**Status (2026-11-10):** the game builds as a native arm64 macOS program that
+needs only the system's frameworks, and plays: title screen, registration,
+player and level dialogs, options, About, level 1, the end screen, music and
+sound effects. Its windows are AppKit windows, its menus are in the macOS menu
+bar, and its dialogs' buttons, check boxes, radio buttons, group boxes, edit
+fields and lists (the level tree included) are AppKit controls. Checked against
+the original game's reference logs (`tools/port/checks.sh`, section 8): level
+1, the digger replay (by window messages, by system mouse events and by a
+system key) and a nuke to the end of the level all MATCH, and three dialogs
+driven by system clicks and keys end in the same control states as the drawn
+controls did. Visual C++ 2.2 still matches all 696 functions with the port's
+source changes, and the MinGW build is unchanged. Floating (undocked) tool
+windows are untried, and so are `linux-64` and `windows-64`.
+
+The port first ran on SDL3 (2026-11-09). On the user's request it moved to
+each system's own toolkit (2026-11-10): the layer reaches the system only
+through `port/src/plat.h`, and SDL is gone (section 9).
 
 ---
 
-## 1. Approach: a Win32 subset on SDL3
+## 1. Approach: a Win32 subset on the system's toolkit
 
 The game uses a lot of Windows: about 180 different Win32 functions, a
 main window with a menu bar and a status bar, child windows, tool windows that
@@ -31,19 +39,23 @@ sections, palettes, timers, the registry, `waveOut` sound and MCI MIDI music.
 
 There are two ways to port that:
 
-- **A. Rewrite the front end** for SDL and keep only the game logic. That
-  changes most of the 23 files of `LEMMINGS.EXE`, which then no longer match
-  `main`'s source, and every dialog and window gets redesigned.
-- **B. Implement the part of Win32 the game uses on top of SDL3** (a small,
-  game-specific "Wine"). The game's sources compile almost unchanged, the user
-  interface looks and behaves like the original, and changes merged from `main`
+- **A. Rewrite the front end** for a new toolkit and keep only the game logic.
+  That changes most of the 23 files of `LEMMINGS.EXE`, which then no longer
+  match `main`'s source, and every dialog and window gets redesigned.
+- **B. Implement the part of Win32 the game uses** (a small, game-specific
+  "Wine") on top of the system. The game's sources compile almost unchanged,
+  the user interface behaves like the original, and changes merged from `main`
   apply cleanly.
 
 **The port takes B.** The layer is new code under `port/`; the decompiled
 sources get only small `#ifdef PORT_SDL` changes where 64-bit pointers don't fit
-(section 5). The layer is plain C11 on SDL3 with no OS-specific code, so
-`linux-64` and `windows-64` can use it unchanged. Everything macOS-specific (the
-app bundle, Homebrew paths, the CI workflow) is kept outside it.
+(section 5; the macro kept its first name). The layer (`port/src`) is plain C11
+without system calls of its own: it reaches the system through one interface,
+`port/src/plat.h` (windows, events, the menu bar, native controls, cursors,
+message boxes, sound streams, timers, folders), which each system implements in
+its own folder - `port/macos/` on AppKit, Core Animation and Core Audio. Where a
+backend has no system menu bar or no native controls, the layer draws its own
+(Windows 95 style) instead.
 
 ---
 
@@ -114,12 +126,20 @@ The per-file list is in appendix A.
 port/
   include/            Win32 headers for the game: windows.h, mmsystem.h, io.h,
                       plus port_prefix.h (forced first into every game file)
-  src/                the layer (C11 + SDL3), one file per area below
-  macos/              app bundle files (Info.plist, icon), used by CMakeLists.txt on macOS only
+  src/                the layer (C11), one file per area below; plat.h is what
+                      it needs from the system, peer.c ties dialog controls to
+                      native views
+  macos/              the macOS backend: plat_cocoa.m (application, windows,
+                      events, cursors, alerts), menu_cocoa.m (the menu bar),
+                      controls_cocoa.m (dialog controls), audio_coreaudio.c
+                      (sound effects), midi_coreaudio.c (music), keycodes.h,
+                      macos.cmake, Info.plist.in
 tools/port/
   rc2c.py             lemmings.rc -> C tables (dialogs, menus, strings, accelerators,
                       version info, embedded .bmp/.cur/.ico)
   run.sh              scripted test run of the native game (like tools/wine/run.sh)
+  checks.sh           all the checks of section 8, one line each
+  expect/             the dialog checks' expected control states
 CMakeLists.txt        the native build
 ```
 
@@ -134,15 +154,18 @@ game's dialog procedures.
 
 **Windows and messages.** A window is an object with class, procedure, style,
 parent, children, rectangle, extra bytes and text. Every top-level window (main
-frame, dialogs, floating tool windows, splash) is an SDL window; child windows
-are areas drawn into their top-level window. The message queue, `SendMessage`
-(direct call), `PostMessage`, timers (`WM_TIMER`), `WM_PAINT` from invalid areas,
-mouse capture, focus, double clicks (`CS_DBLCLKS`) and the usual creation and
-destruction message sequences follow Win32. SDL events become `WM_MOUSEMOVE`,
-`WM_xBUTTONDOWN/UP`, `WM_KEYDOWN/UP`, `WM_CHAR`, `WM_SIZE`, `WM_MOVE`,
-`WM_ACTIVATEAPP`, `WM_CLOSE`; the SDL quit request (Cmd+Q) becomes `WM_CLOSE` to
-the main window. `GetAsyncKeyState` and `GetCursorPos` pump SDL events, so
-`DockWnd::Drag`'s polling loop works.
+frame, dialogs, floating tool windows, splash) is a system window (macOS: an
+`NSWindow`); child windows are areas drawn into their top-level window. The
+message queue, `SendMessage` (direct call), `PostMessage`, timers (`WM_TIMER`),
+`WM_PAINT` from invalid areas, mouse capture, focus, double clicks
+(`CS_DBLCLKS`) and the usual creation and destruction message sequences follow
+Win32. The layer's message loop pumps the system's events itself (on macOS
+`nextEventMatchingMask:`/`sendEvent:`, never `[NSApp run]`); the backend turns
+them into `WM_MOUSEMOVE`, `WM_xBUTTONDOWN/UP`, `WM_KEYDOWN/UP`, `WM_CHAR`
+(through `TranslateMessage`, from the characters the key typed), `WM_SIZE`,
+`WM_MOVE`, `WM_ACTIVATEAPP` and `WM_CLOSE`; Quit (Cmd+Q) becomes `WM_CLOSE` to
+the main window. `GetAsyncKeyState` and `GetCursorPos` read the system's state
+directly, so `DockWnd::Drag`'s polling loop works.
 
 **Drawing.** Each top-level window has a 32-bit framebuffer. A DC draws into a
 window's framebuffer (offset and clipped to that window) or into a bitmap. DIB
@@ -152,8 +175,9 @@ through the source's colour table. This is how true-colour Windows draws the
 game today, so palettes need no emulation: palette calls keep their entries
 (`GetPaletteEntries`, `GetNearestPaletteIndex`) and realising does nothing.
 `GetDeviceCaps` reports a 256-colour display, so the game shows no colour-depth
-warning. Changed framebuffers go to an SDL texture when the message queue is
-empty, scaled with nearest-neighbour filtering for Retina screens.
+warning. Changed framebuffers are shown when the message queue is empty: on
+macOS as the contents of the window's Core Animation layer, scaled with
+nearest-neighbour filtering on Retina screens.
 
 **Text.** A built-in proportional bitmap font, drawn for this project (no font
 files), sized like MS Sans Serif 8 (about 13 pixels high) and scaled for larger
@@ -167,13 +191,40 @@ sends `WM_INITDIALOG`, `WM_COMMAND`, `WM_DRAWITEM`, `WM_MEASUREITEM`,
 `WM_CTLCOLORDLG`. Built-in classes: Button (push, default, check box, radio, group
 box, auto variants), Static (text, icon, frames), Edit (one line), ListBox (with
 owner-drawn items, `LBS_NOTIFY`, a scroll bar) and scroll bars on any window
-with `WS_HSCROLL`/`WS_VSCROLL`. Menus are drawn in Windows 95 style as a bar at
-the top of the main window, with drop-down lists; mouse and keyboard
-(Alt, mnemonics) work, `WM_MENUSELECT` goes to the game for its status-bar help,
-and accelerator tables are honoured. Message boxes use `SDL_ShowMessageBox`.
+with `WS_HSCROLL`/`WS_VSCROLL`.
+
+*Native controls (`port/src/peer.c`, `port/macos/controls_cocoa.m`).* A
+dialog's buttons, check boxes, radio buttons, group boxes, edit fields and list
+boxes are shown by the system's own controls (`NSButton`, `NSBox`,
+`NSTextField`, `NSTableView`), as subviews over the framebuffer. The layer's
+control stays the truth: its state, messages and notifications are as before,
+it just stops drawing itself. Before each present the layer shows its state in
+the views (text, check marks, enabled, visible, frame, rows, selection, scroll
+position); what the user does in a view comes back as the messages the drawn
+control would have handled (`BM_CLICK`, `LB_SETCURSEL` + `LBN_SELCHANGE`,
+`LBN_DBLCLK`, `WM_SETTEXT` + `EN_UPDATE`/`EN_CHANGE`, and Return, Escape and Tab
+through the dialog manager). The owner-drawn level tree is an `NSTableView`
+whose rows the game draws (`WM_DRAWITEM` into a DIB section, one image per
+row). Static text and the game's own classes (`IconTextClass`,
+`IconImageClass`) stay drawn: they rely on `WM_CTLCOLOR*` and the game's
+backgrounds. Each radio button gets its own superview, because AppKit groups
+all the radio buttons of a view while the dialog's groups are its `WS_GROUP`
+runs. `LEMMINGS_NATIVE_CONTROLS` (letters `b`uttons, `g`roup boxes, `e`dit,
+`l`ists, `t`ree) limits which kinds get views, for comparisons.
+
+*Menus.* With a system menu bar (macOS), a window's menu goes there: the
+application menu (About, Hide, Quit) and then the game's drop-down menus,
+filled as they open (`WM_INITMENU` and `WM_INITMENUPOPUP` first, so the game
+enables and checks its items), with `WM_MENUSELECT` for the highlighted item
+(the game's status-bar help) and `WM_COMMAND` for the chosen one. Their items
+are disabled while a modal dialog has the frame disabled. Without one, menus
+are drawn in Windows 95 style as a bar at the top of the window, with
+drop-down lists, mouse and keyboard (Alt, mnemonics). Accelerator tables are
+honoured either way; the native menus have no key equivalents of their own.
+Message boxes are the system's (`NSAlert`).
 
 **Settings.** The registry is a tree of keys and values in memory, loaded from
-and saved to `registry.txt` in the user's SDL preferences folder
+and saved to `registry.txt` in the user's preferences folder
 (`~/Library/Application Support/Visual Sciences/Lemmings` on macOS). Values are
 `REG_DWORD` and `REG_SZ`.
 
@@ -189,10 +240,13 @@ found from `--data DIR`, `LEMMINGS_DATA`, the app bundle's resources, or
 `orig/WINLEMM` next to the build. `fopen` and the CRT extras (`_filelength`,
 `_fileno`, `_unlink`, `itoa`) go through the same translation (`port_prefix.h`).
 
-**Sound.** One SDL audio device; each `waveOutOpen` handle is an SDL audio stream
-in the WAV's format (SDL converts), `waveOutWrite` queues the data,
-`waveOutGetPosition` counts the bytes played, `waveOutReset` clears the stream.
-`mmio*` is a small RIFF reader.
+**Sound.** Each `waveOutOpen` handle is a sound stream of the backend in the
+WAV's format; `waveOutWrite` queues the data, `waveOutGetPosition` counts the
+bytes played, `waveOutReset` clears the stream. On macOS one default-output
+AudioUnit mixes the streams, resampling each linearly from its own rate
+(`port/macos/audio_coreaudio.c`); a stream's queued count reaches exactly 0
+when its sound has ended, which `WOM_DONE` relies on. `mmio*` is a small RIFF
+reader.
 
 **Music.** The layer emulates the MCI sequencer commands the game sends
 (`port/src/mci.c`) and posts `MM_MCINOTIFY` when a tune ends. The tunes are
@@ -208,14 +262,15 @@ file, play from a position, stop, position, length):
   the game handles (it never opens the sequencer).
 
 **Other.** `WinHelp` (no Windows Help on modern systems): opens the English PDF
-manual from the original data (`MANUALS/ENGLISH.PDF`) with `SDL_OpenURL`.
+manual from the original data (`MANUALS/ENGLISH.PDF`) with the system's viewer.
 `GetFileVersionInfo` serves the `VERSIONINFO` block from the resource tables
-(the About box). `timeGetTime` is `SDL_GetTicks`, `Sleep` is `SDL_Delay`,
-`GlobalAlloc` is `malloc`.
+(the About box). `timeGetTime` is the system's monotonic clock in
+milliseconds, `GlobalAlloc` is `malloc`.
 
 **Test harness.** With `LEMMINGS_HARNESS=1` the layer runs the same commands as
 `tools/harness/proxy.c` (`wait`, `waitupd`, `click`, `rclick`, `dbl`, `key`,
-`move`, `menu`, `cmd`, `ctl`, `edit`, `shot`) from `CMD.TXT`, and writes
+`move`, `menu`, `cmd`, `ctl`, `edit`, `shot`) from `CMD.TXT`, plus its own
+(section 8: `sclick`, `sdbl`, `sclickw`, `skey`, `smenu`, `ctls`, `wshot`), and writes
 `LEMLOG.TXT` in the same format (each lemming's first 0x5c bytes as in the 32-bit
 layout, its pointers cut to 32 bits). `tools/cmplog.py` then compares a native run
 with `build/runs/hd-base-l1.txt` and `hd-base-dig.txt`, the reference logs of the
@@ -228,7 +283,7 @@ original game under Wine.
 ```
 cmake -S . -B build/native -G Ninja
 cmake --build build/native
-build/native/lemmings --data orig/WINLEMM      # macOS: build/native/Lemmings.app
+build/native/lemmings --data orig/WINLEMM      # -DLEMMINGS_MACOS_BUNDLE=ON: Lemmings.app
 ```
 
 - The 7 DLLs become static libraries linked into one executable with the layer;
@@ -236,13 +291,17 @@ build/native/lemmings --data orig/WINLEMM      # macOS: build/native/Lemmings.ap
   -Iport/include -Isrc/include`, C99 / C++98-compatible as now.
 - Per-module definitions keep the DLLs apart: the renames of section 2.3 and
   each module's own `rand`.
-- Needs CMake ≥ 3.21, a C/C++ compiler, Python 3 (for `rc2c.py`) and SDL3
-  (≥ 3.2). On macOS: Homebrew's `sdl3`, already installed on this Mac (3.4.18).
+- Needs CMake ≥ 3.21, Apple's command line tools (clang with Objective-C and
+  the macOS SDK), Python 3 (for `rc2c.py`) and Ninja or make. No other library:
+  the executable links only the system's frameworks (AppKit, QuartzCore,
+  CoreGraphics, AudioToolbox, CoreAudio). CMake stops with a message on other
+  systems until they have a backend.
 - The MinGW `Makefile` and `tools/msvc/` are not touched. Checks after each step:
   `make` still builds, and `python3 tools/msvc/build.py --funcs` still reports
   696/696 (the `#ifdef PORT_SDL` changes are invisible to Visual C++).
 - `.github/workflows/macos-build.yml` on `macOS-64`: builds the arm64 executable
-  on `macos-latest` with Homebrew SDL3 and uploads it. It cannot play the game
+  and `Lemmings.app` (checking it links only system libraries and is signed),
+  starts it without game data, and uploads the app. It cannot play the game
   (no game data in CI).
 
 ---
@@ -308,6 +367,12 @@ against a build of `main` (identical apart from timestamps), and a clean
    reference logs; a level ends cleanly; `make` and the 696/696 matching build
    still work.
 8. **macOS packaging and CI.** (done) App bundle, the CI workflow, README section.
+9. **The system's own toolkit.** (done, 2026-11-10) The layer reaches the
+   system only through `plat.h` (first still on SDL, every check passing);
+   the AppKit and Core Audio backend; the game's menus in the macOS menu bar;
+   native dialog controls (buttons, then edit fields and lists, then the level
+   tree), with dialog checks made against the drawn controls first; SDL
+   deleted.
 
 ---
 
@@ -323,12 +388,19 @@ against a build of `main` (identical apart from timestamps), and a clean
 - **Fonts and layout.** Without MS Sans Serif, dialog text may not fit its
   controls exactly; the built-in font is sized to its metrics.
 - **Floating tool windows.** The dock drag draws an outline on the desktop,
-  which SDL cannot draw on: the outline is left out (the docking itself works).
-  Popup windows and modal dialogs depend on the window manager (macOS, X11,
-  Wayland) more than the rest.
+  which a modern system won't let a program draw on: the outline is left out
+  (the docking itself works). Popup windows and modal dialogs depend on the
+  window manager (macOS, X11, Wayland) more than the rest.
 - **Timing.** The game steps every 80 ms from its idle loop. Presenting frames
-  and SDL's event handling must not delay it; the harness counts updates, so
-  logs stay comparable.
+  and the system's event handling must not delay it; the harness counts
+  updates, so logs stay comparable. While AppKit tracks a menu or a window
+  drag the game waits, as a Win32 program in a modal menu or move loop does; a
+  timer in AppKit's tracking mode keeps presenting meanwhile.
+- **Native controls and the layer.** A control's native view and its layer
+  state can disagree only between a user's action and the next sync; the
+  layer's state wins. Keys typed into a native field never reach the layer's
+  key path, so a dialog's own key handling sees only Return, Escape and Tab
+  (passed on explicitly).
 - **Unaligned reads.** Sprite offsets are read as `DWORD` at 2-byte-aligned
   addresses; arm64 and x86-64 allow that, but it is undefined in C. The build
   uses `-fno-strict-aliasing`; checked with UBSan once.
@@ -336,9 +408,9 @@ against a build of `main` (identical apart from timestamps), and a clean
   also looks at `../Resources/WINLEMM` (an app bundle; harmless elsewhere),
   and the desktop's height leaves 28 pixels for a system caption (the macOS
   value). To revisit on `linux-64` and `windows-64`.
-- **Windows-64 later.** On Windows the layer's `windows.h` replaces the SDK's for
-  the game's files; the layer's own files must not mix the two. To check when
-  merging into `windows-64`.
+- **Windows-64 and Linux later.** `windows-64` becomes a plain Win32 x64 build
+  of the game without the layer (the system has Win32); `linux-64` gets a GTK
+  backend of `plat.h`. Until then CMake builds only on macOS.
 
 ---
 
@@ -354,34 +426,57 @@ the original game made by `tools/wine/run.sh`:
 | `l1` | play level 1, 300 updates | MATCH `hd-base-l1` (301 updates) |
 | `dig` | `waitupd 200;click 332 395;waitupd 228;click 596 138` (digger) | MATCH `hd-base-dig` (403 updates) |
 | `nuke` | `waitupd 100;click 552 395;waitupd 110;click 552 395;waitupd 120;dbl 552 395` | MATCH `s43-nuke-orig2` (264 updates, to the end of the level); the end screen follows, no crash |
-| `sdig` | the `dig` run with `sclick` (real SDL mouse events through hit testing, capture and the docked panel) | MATCH `hd-base-dig` |
-| `skey` | `dig` with the digger chosen by the key `8` (`skey 8`: SDL key event, `TranslateMessage`, accelerator table) | MATCH `hd-base-dig` |
-| `smenu` | title screen, `sclickw` on File, then on Exit (the menu bar and its modal loop) | the game ends, exit code 0 |
+| `sdig` | the `dig` run with `sclick` (system mouse events through AppKit, hit testing, capture and the docked panel) | MATCH `hd-base-dig` |
+| `skey` | `dig` with the digger chosen by the key `8` (`skey 8`: a system key event, `TranslateMessage`, accelerator table) | MATCH `hd-base-dig` |
+| `smenu` | title screen, `smenu File/Exit` (the macOS menu bar: `WM_INITMENU(POPUP)`, `WM_MENUSELECT`, `WM_COMMAND`) | the game ends, exit code 0 |
+| `squit` | title screen, `smenu App/Quit Lemmings` (the application menu, `WM_CLOSE`) | the game ends, exit code 0 |
+| `zoomclk` | Options, `sclick` on the zoom radio button "2" (a native `NSButton`), OK | the level is drawn at 2x (frame 767 high) |
+| `opts` | Options, `sclick` on Music On and Low Resolution | the controls' states (`ctls`) as `tools/port/expect/opts.txt` |
+| `user` | Select Player, `sclick` in the name field, `skey x`, `skey y`, `sclick` on the list's row | as `expect/user.txt` (name "Testerxy", then "Tester" from the list) |
+| `level` | Choose Level, `sdbl` on two tree rows (open Original Levels, then Fun), `sclick` on a level | as `expect/level.txt` (8 rows, the level's details shown) |
 | `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list), exit code 0, no crash report |
+
+`tools/port/checks.sh [NAME...]` runs them all (except `again`) and prints one
+line each; `EXE=` picks the binary (for instance the app bundle's). The
+`expect/` files were made with the layer's drawn controls
+(`LEMMINGS_NATIVE_CONTROLS=-` still gives those), so the dialog checks compare
+the native controls with them.
 
 `click`/`dbl`/`key` post window messages straight to the window under the
 point, like the Wine harness; `sclick X Y`, `sdbl X Y`, `sclickw X Y` (window
-coordinates, for the menu bar) and `skey NAME` (an SDL scancode name) go
-through SDL's event queue and the layer's input translation instead.
+coordinates) and `skey NAME` (a key name: a letter or digit, Return, Escape,
+Tab, Space, Backspace, the arrows, F1-F3, F10) are posted to AppKit as
+`NSEvent`s and go through its hit testing, native controls and the layer's
+input translation; `smenu MENU/ITEM` chooses through the menu bar (`smenu ?`
+lists it). `ctls` logs the dialog's controls (class, id, text, state), `shot
+NAME` saves the framebuffer as a BMP, `wshot NAME` the window as AppKit shows
+it, native controls included, as a PNG. A click on a native control posts its
+button-up with the button-down: the control tracks the mouse in a loop of its
+own until the button comes up, and the harness can't run meanwhile.
 
 With `START=` it stays on the title screen: the registration, Select Player,
 Choose Level (tree, preview, details), Options and About dialogs were opened
-and photographed that way (`shot NAME`). With sound and music on (`SOUND=1`)
-the level-1 log still matches, and the MCI trace shows the tune opened, played
-with notification, stopped and closed.
+and photographed that way. With sound and music on (`SOUND=1`) the level-1 log
+still matches, the MCI trace shows the tune opened, played with notification,
+stopped and closed, and the nuke run plays its four sound effects (each one
+ends, so the next one starts).
 
-Known differences from the original on Windows: the text is the layer's own
-bitmap font; a top-level window's frame and caption are the system's (so the
-game's window is its client size); the dock drag outline is not drawn; Help
-opens the English PDF manual. The zoom shortcuts in the accelerator table (Alt+F1/F2/F3,
-commands 0x16f/0x171/0x173) do nothing, as in the original, which has no
-handler for them: zoom is set in the Options dialog.
+Known differences from the original on Windows: the text drawn by the layer
+(the game's own windows, static text) is its own bitmap font; a top-level
+window's frame and caption are the system's (so the game's window is its
+client size); the menus are in the macOS menu bar, with About and Quit also in
+the application menu; dialog controls are AppKit's (Aqua look, the system
+font, the mini size where a Windows label is too wide for the small one); the
+dock drag outline is not drawn; Help opens the English PDF manual. The zoom
+shortcuts in the accelerator table (Alt+F1/F2/F3, commands 0x16f/0x171/0x173)
+do nothing, as in the original, which has no handler for them: zoom is set in
+the Options dialog.
 
 ## 9. Decisions
 
 Asked on 2026-11-09; the user's answers:
 
-- **Approach:** the Win32 subset on SDL3 of section 1 (approved).
+- **Approach:** the Win32 subset of section 1 (approved; then on SDL3).
 - **Music:** each operating system's own MIDI synthesizer (section 3, Music).
 - **Third-party code:** small permissively licensed files may be added under
   `port/third_party/` with their licences.
@@ -405,6 +500,22 @@ The options that were offered for the music:
    - Each operating system's own MIDI synth (Core Audio's on macOS, `midiOut` on
      Windows; Linux has none built in): no files, but platform code outside the
      shared layer. **Chosen.**
+
+Asked on 2026-11-10 ("can we drop SDL and try native toolkits"); the user's
+answers:
+
+- **Toolkit:** each system's own. macOS: AppKit and Core Audio inside the
+  Win32 layer (native windows, the macOS menu bar, alerts); `windows-64`: a
+  plain Win32 x64 build without the layer, later; `linux-64`: a GTK backend,
+  later.
+- **Dialog controls:** the system's own controls (buttons, check boxes, text
+  fields, lists, the level tree), not the layer's drawn ones.
+- **SDL:** deleted once the AppKit backend passed the same checks (it did:
+  stage by stage, every check of section 8 on each).
+
+The game sources' `PORT_SDL` macro kept its name: it marks the native 64-bit
+build whatever the backend, and renaming it would touch every game file it
+guards.
 
 ---
 

@@ -309,8 +309,9 @@ void input_control(uint32_t hwnd, int event, int arg)
         PostMessageA(w->h, WM_KEYUP, (WPARAM)arg, (LPARAM)(1 | 3u << 30));
         break;
     }
-    if (!top->destroyed)
-        sync_tree(top);     /* e.g. a radio button's group */
+    /* the views show the result at the next present, not now: AppKit is still
+       inside the view's event (a table reloaded in its own mouse tracking
+       loses the next click) */
 }
 
 void input_control_text(uint32_t hwnd, const char *utf8)

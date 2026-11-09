@@ -1,9 +1,9 @@
-# Builds the native 64-bit macOS game (arm64) on the SDL3 platform layer
-# (PORTING.md): the plain executable, and Lemmings.app with its own copy of
-# SDL3, uploaded as the artifact. The game's data files are not part of the
-# repository, so CI only builds: put the WINLEMM folder of an original
-# installation into Lemmings.app/Contents/Resources, or start the game with
-# --data <folder>.
+# Builds the native 64-bit macOS game (arm64) on its AppKit and Core Audio
+# backend (PORTING.md): the plain executable, and Lemmings.app, uploaded as
+# the artifact. Only the system's frameworks are needed. The game's data
+# files are not part of the repository, so CI only builds: put the WINLEMM
+# folder of an original installation into Lemmings.app/Contents/Resources, or
+# start the game with --data <folder>.
 name: macOS build
 
 on:
@@ -24,8 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install SDL3 and Ninja
-        run: brew install sdl3 ninja
+      - name: Install Ninja
+        run: brew install ninja
 
       - name: Build the executable
         run: |
@@ -37,14 +37,17 @@ jobs:
         run: |
           cmake -S . -B build/app -G Ninja -DCMAKE_BUILD_TYPE=Release -DLEMMINGS_MACOS_BUNDLE=ON
           cmake --build build/app
-          otool -L build/app/Lemmings.app/Contents/MacOS/Lemmings | grep -q '@rpath/libSDL3'
+          # the system's libraries only (bash -e ignores a failing "! cmd", hence the if)
+          if otool -L build/app/Lemmings.app/Contents/MacOS/Lemmings | grep -v '^build' | grep -v '/System/Library/\|/usr/lib/'; then
+            echo "links a library that isn't the system's"; exit 1
+          fi
           codesign --verify build/app/Lemmings.app
 
       - name: Start without game data
         # no data: it must stop at once with its "needs the original files" message, not crash
         run: |
           set +e
-          SDL_VIDEO_DRIVER=dummy LEMMINGS_HARNESS=1 build/native/lemmings --data /nonexistent > out.txt 2>&1
+          LEMMINGS_HARNESS=1 build/native/lemmings --data /nonexistent > out.txt 2>&1
           code=$?
           cat out.txt
           test $code -eq 1 && grep -q "has no GFX folder" out.txt

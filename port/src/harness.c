@@ -1,9 +1,14 @@
 /*
  * The test harness of the native build, the counterpart of the Wine
  * harness's logging PROCESS.DLL (tools/harness/proxy.c). With
- * LEMMINGS_HARNESS=1 it runs the commands of CMD.TXT (wait MS, waitupd N,
- * click/rclick/dbl/move X Y, key VK, menu NAME, cmd ID, ctl NAME, edit TEXT,
- * shot NAME) from the message loop, logs them to CMDLOG.TXT, and after every
+ * LEMMINGS_HARNESS=1 it runs the commands of CMD.TXT from the message loop:
+ * wait MS, waitupd N; click/rclick/dbl/move X Y, key VK, menu NAME, cmd ID,
+ * ctl NAME, edit TEXT (window messages, as the Wine harness posts them);
+ * sclick/sdbl X Y, sclickw X Y (window coordinates), skey NAME, smenu
+ * MENU/ITEM (the system's own events, through its windows, native controls
+ * and menu bar); ctls (the dialog's controls), shot NAME (the framebuffer),
+ * wshot NAME (the window as the system shows it). It logs them to
+ * CMDLOG.TXT, and after every
  * ProcessLemmings call writes the lemmings to LEMLOG.TXT in the proxy's
  * format, so tools/cmplog.py compares a native run with the reference logs
  * of the original game. Files are in LEMMINGS_HARNESS_DIR (default: the
@@ -294,7 +299,7 @@ static void click_down(void)
     hold(2, click_up);
 }
 
-/* ---- Real input (sclick, sdbl, sclickw, skey): through the backend and the layer's input path ---- */
+/* ---- System input (sclick, sdbl, sclickw, skey): through the backend and the layer's input path ---- */
 
 enum { HM_MOVE, HM_DOWN, HM_UP };
 static Wnd *g_stop;
@@ -382,7 +387,7 @@ static void run(char *line)
         sp.y = w->rc.top + g_sy;
         g_vcur = sp;
         push_mouse(HM_MOVE, 0);
-        port_harness_log("  -> sdl at %d %d (screen %ld %ld)", g_sx, g_sy, (long)sp.x, (long)sp.y);
+        port_harness_log("  -> system click at %d %d (screen %ld %ld)", g_sx, g_sy, (long)sp.x, (long)sp.y);
         hold(1, sclick_down);
         return;
     }
@@ -400,11 +405,11 @@ static void run(char *line)
         push_mouse(HM_UP, 1);
         push_mouse(HM_DOWN, 2);
         push_mouse(HM_UP, 2);
-        port_harness_log("  -> sdl dbl at %d %d", g_sx, g_sy);
+        port_harness_log("  -> system double click at %d %d", g_sx, g_sy);
     } else if (w && w->plat && sscanf(line, "skey %63s", a) == 1) {
         g_stop = w;
         port_strlcpy(g_keyName, a, sizeof g_keyName);
-        port_harness_log("  -> sdl key %s", a);
+        port_harness_log("  -> system key %s", a);
         push_key(1);
         hold(2, skey_up);
         return;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Turn a Windows resource script into C tables for the native SDL3 build.
+"""Turn a Windows resource script into C tables for the native 64-bit build.
 
     rc2c.py src/lemmings/lemmings.rc build/native/gen/lemmings_res.c
 

@@ -1,7 +1,7 @@
 /*
  * Resources from the generated tables (tools/port/rc2c.py): strings, raw
  * resources (the level tree's bitmap), cursors and icons. The game's .cur and
- * .ico files become SDL colour cursors and 32-bit images.
+ * .ico files become the system's colour cursors and 32-bit images.
  */
 #include "port_internal.h"
 #include "port_res.h"

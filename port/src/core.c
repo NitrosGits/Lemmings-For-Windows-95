@@ -148,7 +148,7 @@ void port_fatal(const char *fmt, ...)
     exit(1);
 }
 
-/* Windows-1252 to UTF-8, for SDL's window titles and message boxes */
+/* Windows-1252 to UTF-8, for the system's window titles, message boxes and controls */
 void port_utf8(const char *s, char *out, size_t size)
 {
     static const unsigned short hi[32] = {
