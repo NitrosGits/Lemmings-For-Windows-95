@@ -10,19 +10,21 @@ The project achieves **dual-target compatibility**:
 
 ## Progress & Status
 
-Across the entire game (1 executable + 7 DLLs), **690 out of 696 functions (99.14%)** are 100% byte-matched:
+Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are byte-matched:
 
 | Module | Purpose | Functions Matched | Status |
 |---|---|---|---|
-| **`LEMMINGS.EXE`** | Main UI, windowing, menus, level selector | **333 / 334 (99.70%)** | 1 near-match (2 bytes off) |
+| **`LEMMINGS.EXE`** | Main UI, windowing, menus, level selector | **334 / 334 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`FILEHAND.DLL`** | File I/O and archive resource extraction | **7 / 7 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`GAMEOVER.DLL`** | Game over animation and result handling | **3 / 3 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`LOADLVL.DLL`** | Level file format parser and terrain unpacker | **41 / 41 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`READDIB.DLL`** | DIB / BMP bitmap loading and palette parsing | **17 / 17 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`VSMEM.DLL`** | Custom sub-allocator and memory manager | **11 / 11 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`RENDER.DLL`** | High-performance 2D blitter and dirty-rect engine | **77 / 77 (100.0%)** | **100% BYTE-IDENTICAL** |
-| **`PROCESS.DLL`** | Lemming physics, state machine, skill actions, terrain collision | **201 / 206 (97.57%)** | 5 near-matches |
-| **Total** | | **690 / 696 (99.14%)** | **6 / 8 Modules 100% Matched** |
+| **`PROCESS.DLL`** | Lemming physics, state machine, skill actions, terrain collision | **206 / 206 (100.0%)** | **100% BYTE-IDENTICAL** |
+| **Total** | | **696 / 696 (100.0%)** | **8 / 8 Modules 100% Matched** |
+
+"Byte-identical" here means each function's compiled code, checked with `tools/msvc/build.py --funcs`. The linked EXE and DLL files are not yet identical as whole files: headers, import tables and some relocated addresses still differ.
 
 ---
 
