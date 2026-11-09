@@ -1,0 +1,358 @@
+# Native 64-bit port (SDL3)
+
+This file plans and tracks the native port of Lemmings for Windows 95 to 64-bit
+macOS, Linux and Windows on top of [SDL3](https://libsdl.org). It lives on the
+permanent branches `macOS-64`, `linux-64` and `windows-64`, never on `main`.
+The port is written on `macOS-64` and merged from there into the other two.
+
+`main` stays the byte-matching decompilation. The port must not change what
+Visual C++ 2.2 or the 32-bit MinGW build (`make`) compile, so both keep working
+on these branches too.
+
+**Status:** plan only, nothing built yet (2026-11-09).
+
+---
+
+## 1. Approach: a Win32 subset on SDL3
+
+The game uses a lot of Windows: about 180 different Win32 functions, a
+main window with a menu bar and a status bar, child windows, tool windows that
+dock and float, 6 dialogs from resource templates (with list boxes, owner-drawn
+items, edit fields, check boxes and radio buttons), GDI drawing into 8-bit DIB
+sections, palettes, timers, the registry, `waveOut` sound and MCI MIDI music.
+
+There are two ways to port that:
+
+- **A. Rewrite the front end** for SDL and keep only the game logic. That
+  changes most of the 23 files of `LEMMINGS.EXE`, which then no longer match
+  `main`'s source, and every dialog and window gets redesigned.
+- **B. Implement the part of Win32 the game uses on top of SDL3** (a small,
+  game-specific "Wine"). The game's sources compile almost unchanged, the user
+  interface looks and behaves like the original, and changes merged from `main`
+  apply cleanly.
+
+**The port takes B.** The layer is new code under `port/`; the decompiled
+sources get only small `#ifdef PORT_SDL` changes where 64-bit pointers don't fit
+(section 5). The layer is plain C11 on SDL3 with no OS-specific code, so
+`linux-64` and `windows-64` can use it unchanged. Everything macOS-specific (the
+app bundle, Homebrew paths, the CI workflow) is kept outside it.
+
+---
+
+## 2. Inventory
+
+Taken from the 32-bit MinGW build's import tables and object files (`make`,
+then `llvm-nm -u` per object), and from reading the sources. Counts are distinct
+functions.
+
+### 2.1 Modules
+
+| Module | Sources | Win32 use |
+|---|---|---|
+| `LEMMINGS.EXE` (`src/lemmings`, 23 C++ files + `lemmings.rc`) | windows, dialogs, menus, GDI, palette, timers, registry, MCI MIDI, files | almost all of it |
+| `RENDER.DLL` (`render.c`) | 8-bit DIB sections, `BitBlt`/`StretchBlt`/`StretchDIBits`, `timeGetTime` | GDI |
+| `PROCESS.DLL` (27 C++ files) | `waveOut*`, `mmio*`, `GetAsyncKeyState`, `fopen` (scripts) | sound |
+| `LOADLVL.DLL` (`loadlvl.c`) | `_lwrite` (unused function), message boxes | almost none |
+| `READDIB.DLL` (`readdib.c`) | `CreateDIBitmap`, `CreatePalette`, `CreateDC("DISPLAY")` | GDI |
+| `FILEHAND.DLL` (`filehand.c`) | `CreateFile`/`ReadFile`/`GetFileSize` | files |
+| `VSMEM.DLL` (`vsmem.c`) | `GlobalAlloc`/`GlobalLock` | memory |
+| `GAMEOVER.DLL` (`gameover.c`) | `LoadString(NULL, …)` (reads the EXE's string table) | strings |
+
+`src/crt` (the small C runtime of the 32-bit build) is not used by the native
+build: the host's C library replaces it.
+
+### 2.2 Win32 API by area (176 functions used by the game's own code)
+
+| Area | Functions | Notes |
+|---|---|---|
+| Windows (USER) | `RegisterClass`, `CreateWindowEx`, `DestroyWindow`, `DefWindowProc`, `ShowWindow`, `UpdateWindow`, `SetWindowPos`, `GetWindowRect`, `GetClientRect`, `AdjustWindowRect`, `ClientToScreen`, `ScreenToClient`, `ChildWindowFromPoint`, `WindowFromPoint`, `GetParent`, `SetParent`, `GetWindow`, `GetDesktopWindow`, `FindWindow`, `Get/SetWindowLong`, `Get/SetWindowWord`, `Get/SetWindowText`, `EnableWindow`, `IsWindowEnabled`, `SetFocus`, `InvalidateRect`, `BeginPaint`/`EndPaint`, `GetDC`/`GetWindowDC`/`ReleaseDC`, `ScrollWindow`, `SetScrollRange`/`SetScrollPos`, `SetCapture`/`ReleaseCapture`, `GetCursorPos`, `SetCursor`/`GetCursor`, `LoadCursor`/`DestroyCursor`, `LoadIcon`, `GetSystemMetrics`, `GetSysColor` | 15 window/dialog creations; scroll bars on the game view; tool windows switch between `WS_POPUP` and `WS_CHILD` with `SetParent` |
+| Messages | `PeekMessage`, `WaitMessage`, `TranslateMessage`, `DispatchMessage`, `SendMessage`, `PostMessage`, `PostQuitMessage`, `SetTimer`/`KillTimer`, `GetAsyncKeyState`, `LoadAccelerators`/`TranslateAccelerator` | own loop in `WinMain` and `WaitTime`; custom messages 0x400–0x800; `DockWnd::Drag` polls `GetAsyncKeyState` in a loop without pumping messages |
+| Dialogs and controls | `DialogBoxParam`, `EndDialog`, `GetDlgItem`, `Get/SetDlgItemText`, `CheckDlgButton`, `IsDlgButtonChecked`, `DrawFocusRect` | 6 templates (level select ×2, options, about, select player, registration); controls: Button (push, default, check, radio, group box), Static (text, icon, frames), Edit, ListBox (plain and owner-drawn), plus the game's own `IconTextClass`/`IconImageClass`; messages `LB_*` (12), `LBN_*`, `EM_SETSEL`, `EN_UPDATE`, `WM_DRAWITEM`/`WM_MEASUREITEM`, `WM_CTLCOLORDLG`, `WM_SETFONT` |
+| Menus | `LoadMenu`, `SetMenu`, `GetMenu`, `DestroyMenu`, `EnableMenuItem` | 3 menus (game, front end, end screen); help texts in the status bar via `WM_MENUSELECT`; 28 accelerators |
+| GDI | `CreateCompatibleDC`, `CreateDC`, `DeleteDC`, `SelectObject`, `DeleteObject`, `GetObject`, `GetStockObject`, `CreateDIBSection`, `CreateDIBitmap`, `BitBlt`, `StretchBlt`, `StretchDIBits`, `PatBlt`, `FillRect`, `Rectangle`, `CreateSolidBrush`, `CreateHatchBrush`, `CreateBrushIndirect`, `GdiFlush`, `GetDeviceCaps`, `UpdateColors` | raster ops: only `SRCCOPY`, `PATCOPY`, `DSTINVERT`; all DIBs `DIB_RGB_COLORS` |
+| Palettes | `CreatePalette`, `SelectPalette`, `RealizePalette`, `UnrealizeObject`, `GetPaletteEntries`, `GetSystemPaletteEntries`, `GetNearestPaletteIndex` | about 50 calls, written for 256-colour displays; `WM_QUERYNEWPALETTE`/`WM_PALETTECHANGED` |
+| Text | `CreateFont`, `TextOut`, `ExtTextOut`, `GetTextExtentPoint`, `GetTextMetrics`, `SetTextColor`, `SetBkColor`, `SetBkMode`, `wsprintf`, `MulDiv`, `lstrcpy/lstrcat/lstrlen` | 4 fonts (status bar, icon-panel numbers, splash, about box) |
+| Resources | `LoadString`, `FindResource`/`LoadResource`/`LockResource`/`FreeResource`, `GetModuleFileName`, `GetFileVersionInfo*`/`VerQueryValue` | `lemmings.rc`: 6 dialogs, 3 menus, accelerators, ~90 strings, 8 cursors, 1 icon, 1 bitmap (the level-tree icons), version info |
+| Registry | `RegCreateKeyEx`, `RegOpenKeyEx`, `RegCloseKey`, `RegQueryValueEx`, `RegSetValueEx`, `RegEnumKeyEx`, `RegDeleteKey`, `RegFlushKey` | 6 call sites in `registry.cpp`; `HKLM\Software\Visual Sciences\Windows Lemmings` with a key per player; also reads `ProgramFilesDir` and writes an uninstall key |
+| Files | `CreateFile`, `ReadFile`, `GetFileSize`, `CloseHandle`, `_lopen`/`_lread`/`_lwrite`/`_llseek`/`_lclose`, `CreateDirectory`, `DeleteFile`, `GetCurrentDirectory`, `GetWindowsDirectory`; C library `fopen`/`fread`/`fwrite`/`fgetc`/`_filelength`/`_fileno`/`_unlink` | all paths are Windows paths (`gfx\icons.bmp`); the data files on disk are upper case (`GFX/ICONS.BMP`) |
+| Sound (WINMM) | `waveOutOpen`/`Close`/`PrepareHeader`/`UnprepareHeader`/`Write`/`Reset`/`GetPosition`/`GetNumDevs`/`GetDevCaps`, `mmioOpen`/`Descend`/`Ascend`/`Read`/`Close` | 23 WAVs, one effect at a time, the device opened per effect |
+| Music (MCI) | `mciSendCommand` (`MCI_SYSINFO`, `OPEN`, `SEEK`, `SET`, `STATUS`, `PLAY`+`MCI_NOTIFY`, `STOP`, `CLOSE`), `mciGetErrorString`, `midiOutGetDevCaps` | 15 `.MID` files played through the MCI sequencer, restarted on `MM_MCINOTIFY` |
+| System | `GetVersion`, `GlobalMemoryStatus`, `GlobalAlloc/Lock/Unlock/Free`, `Sleep`, `timeGetTime`, `MessageBox`, `ExitProcess`, `GetLastError`, `OutputDebugString`, `WinHelp` | |
+
+The per-file list is in appendix A.
+
+### 2.3 32-bit and compiler assumptions
+
+| What | Where | Port |
+|---|---|---|
+| Pointers stored in window longs (`SetWindowLong(…, (LONG)ptr)`) | `window.cpp` (the C++ object of every window), `statusbar.cpp` (the status bar's data) | `Get/SetWindowLongPtr` under `#ifdef PORT_SDL` |
+| An `HWND` kept in an `int` (`g_global28`, the status bar) | `frame.cpp`, `winmain.cpp`, `winlemm.h` | an `INT_PTR` under `#ifdef PORT_SDL` |
+| Pointers passed as `DWORD` (`mciSendCommand(…, (DWORD)&parms)`, `dwCallback = (DWORD)hwnd`, `WinHelp(…, (DWORD)"CONTENTS")`) | `midi.cpp` (10), `mainwnd.cpp` (2) | `DWORD_PTR` under `#ifdef PORT_SDL` |
+| `long` is 64-bit on LP64 (macOS, Linux) | only local sizes and counters (`user.cpp`, `settings.cpp`, `loadlvl.c`, `vsmem.c`, `FILE_Read`) | harmless; `DWORD`, `LONG`, `UINT` stay 32-bit in the layer's headers |
+| Structures read from files | `BITMAPFILEHEADER` (packed, 14 bytes), `BITMAPINFOHEADER`, `BITMAPCOREHEADER`, `RGBQUAD`, `WAVEFORMATEX` (18 bytes), the level database (`DBENTRY`, `#pragma pack(1)`, `int` header), sprite files (`DWORD` offsets, read unaligned) | same layout with fixed-width types and packing in the layer's headers; no file structure holds a pointer |
+| Structures with pointers that only live in memory | `DLENTRY` (24 → 32 bytes), `LEVEL`, `LEMMING` (pointers from 0x5c), `WAVEHDR` | fine: always used through `sizeof` and member names (to check while porting) |
+| Inline assembly | `render.c` (13 blitter loops), `gameview.cpp` (scroll clamp), `dockwnd.cpp` and `sound.cpp` (padding bytes for the matching build only) | already have C versions under `#ifndef _MSC_VER`, used by the MinGW build: nothing to do |
+| Calling conventions (`WINAPI`, `CALLBACK`, `PASCAL`, `__declspec`) | everywhere, `__declspec` only under `_MSC_VER` | `WINAPI` etc. are empty on 64-bit |
+| Each DLL has its own copy of the C runtime: own `rand()` seed (MSVC's generator) | `render.c` (`Random`), `midi.cpp` (`RandomTune`) | a per-module MSVC-compatible `rand`/`srand` (the host's `rand` is a different generator) |
+| Names defined in more than one DLL | `DllEntryPoint` (6 DLLs), `VS_AssertFailed` (4), `g_scale`, `g_list`, `g_list2` (EXE and PROCESS, different variables) | renamed per module by the build (`-Dg_scale=process_g_scale` …), no source change |
+| The original deletes the dock windows in `EndGame` but keeps them in `g_dockList` until the next `StartGame` | `mainwnd.cpp` | the portable build's `DELETE_DOCKWND` (`#ifndef _MSC_VER`) already keeps their memory until then; the port uses it as is, and the layer must cope with `Move`/`SetWindowPos` on destroyed windows (it ignores unknown handles) |
+| Pointer error codes (`(WAVEHDR *)-1` … `-7` from `LoadWave`, later passed back to `waveOutUnprepareHeader`) | `wave.cpp` | the layer checks headers against the ones it knows before touching them |
+
+---
+
+## 3. Layer design
+
+```
+port/
+  include/            Win32 headers for the game: windows.h, mmsystem.h, io.h,
+                      plus port_prefix.h (forced first into every game file)
+  src/                the layer (C11 + SDL3), one file per area below
+  macos/              app bundle files (Info.plist, icon), used by CMakeLists.txt on macOS only
+tools/port/
+  rc2c.py             lemmings.rc -> C tables (dialogs, menus, strings, accelerators,
+                      version info, embedded .bmp/.cur/.ico)
+  run.sh              scripted test run of the native game (like tools/wine/run.sh)
+CMakeLists.txt        the native build
+```
+
+**Types (`port/include/windows.h`).** Fixed-width types as on Win64:
+`BYTE`/`WORD`/`DWORD`/`UINT`/`LONG`/`BOOL` 8/16/32/32/32/32 bits;
+`WPARAM`, `LPARAM`, `LRESULT`, `*_PTR` pointer-sized. Handles (`HWND`, `HDC`,
+`HBITMAP`, …) are pointers to the layer's objects. Structures the game reads from
+files are packed exactly as in the Windows SDK. Only the functions, messages and
+constants the game uses are declared; anything missing is a compile error, so the
+inventory stays honest. `DLGPROC` returns `BOOL` as in the 1995 SDK, matching the
+game's dialog procedures.
+
+**Windows and messages.** A window is an object with class, procedure, style,
+parent, children, rectangle, extra bytes and text. Every top-level window (main
+frame, dialogs, floating tool windows, splash) is an SDL window; child windows
+are areas drawn into their top-level window. The message queue, `SendMessage`
+(direct call), `PostMessage`, timers (`WM_TIMER`), `WM_PAINT` from invalid areas,
+mouse capture, focus, double clicks (`CS_DBLCLKS`) and the usual creation and
+destruction message sequences follow Win32. SDL events become `WM_MOUSEMOVE`,
+`WM_xBUTTONDOWN/UP`, `WM_KEYDOWN/UP`, `WM_CHAR`, `WM_SIZE`, `WM_MOVE`,
+`WM_ACTIVATEAPP`, `WM_CLOSE`; the SDL quit request (Cmd+Q) becomes `WM_CLOSE` to
+the main window. `GetAsyncKeyState` and `GetCursorPos` pump SDL events, so
+`DockWnd::Drag`'s polling loop works.
+
+**Drawing.** Each top-level window has a 32-bit framebuffer. A DC draws into a
+window's framebuffer (offset and clipped to that window) or into a bitmap. DIB
+sections keep their own bit depth (the game's are 8-bit) and colour table; other
+bitmaps are 32-bit. `BitBlt`/`StretchBlt`/`StretchDIBits` convert 8-bit pixels
+through the source's colour table. This is how true-colour Windows draws the
+game today, so palettes need no emulation: palette calls keep their entries
+(`GetPaletteEntries`, `GetNearestPaletteIndex`) and realising does nothing.
+`GetDeviceCaps` reports a 256-colour display, so the game shows no colour-depth
+warning. Changed framebuffers go to an SDL texture when the message queue is
+empty, scaled with nearest-neighbour filtering for Retina screens.
+
+**Text.** A built-in proportional bitmap font, drawn for this project (no font
+files), sized like MS Sans Serif 8 (about 13 pixels high) and scaled for larger
+requests; bold by drawing twice. Dialog units are computed from it as Windows
+does.
+
+**Dialogs, controls, menus.** `tools/port/rc2c.py` turns `lemmings.rc` into C
+tables at build time. The dialog manager creates the controls from the
+templates, runs a modal loop, handles Tab/Enter/Escape and default buttons, and
+sends `WM_INITDIALOG`, `WM_COMMAND`, `WM_DRAWITEM`, `WM_MEASUREITEM`,
+`WM_CTLCOLORDLG`. Built-in classes: Button (push, default, check box, radio, group
+box, auto variants), Static (text, icon, frames), Edit (one line), ListBox (with
+owner-drawn items, `LBS_NOTIFY`, a scroll bar) and scroll bars on any window
+with `WS_HSCROLL`/`WS_VSCROLL`. Menus are drawn in Windows 95 style as a bar at
+the top of the main window, with drop-down lists; mouse and keyboard
+(Alt, mnemonics) work, `WM_MENUSELECT` goes to the game for its status-bar help,
+and accelerator tables are honoured. Message boxes use `SDL_ShowMessageBox`.
+
+**Settings.** The registry is a tree of keys and values in memory, loaded from
+and saved to `registry.txt` in the user's SDL preferences folder
+(`~/Library/Application Support/Visual Sciences/Lemmings` on macOS). Values are
+`REG_DWORD` and `REG_SZ`.
+
+**Files.** Windows paths are translated: `\` becomes `/`, each name is matched
+case-insensitively against the disk (the data files are upper case), and drive
+paths map like Wine's: the game's folder (`C:\WINLEMM`, what
+`GetCurrentDirectory` returns) is the original data folder, read-only in
+practice; the rest of `C:\` is `drive_c/` in the preferences folder. Player
+databases, which the game writes under `ProgramFilesDir\WinLemm` (the layer's
+registry sets `ProgramFilesDir` to `C:\Program Files`), so land in the
+preferences folder and the original data is never written. The data folder is
+found from `--data DIR`, `LEMMINGS_DATA`, the app bundle's resources, or
+`orig/WINLEMM` next to the build. `fopen` and the CRT extras (`_filelength`,
+`_fileno`, `_unlink`, `itoa`) go through the same translation (`port_prefix.h`).
+
+**Sound.** One SDL audio device; each `waveOutOpen` handle is an SDL audio stream
+in the WAV's format (SDL converts), `waveOutWrite` queues the data,
+`waveOutGetPosition` counts the bytes played, `waveOutReset` clears the stream.
+`mmio*` is a small RIFF reader.
+
+**Music.** The MCI sequencer commands the game sends are emulated on a MIDI
+file player that feeds a software synthesizer through another SDL audio stream,
+and `MM_MCINOTIFY` is posted when a tune ends. Which synthesizer is open
+question 1 (section 8).
+
+**Other.** `WinHelp` (no Windows Help on modern systems): opens the English PDF
+manual from the original data (`MANUALS/ENGLISH.PDF`) with `SDL_OpenURL`.
+`GetFileVersionInfo` serves the `VERSIONINFO` block from the resource tables
+(the About box). `timeGetTime` is `SDL_GetTicks`, `Sleep` is `SDL_Delay`,
+`GlobalAlloc` is `malloc`.
+
+**Test harness.** With `LEMMINGS_HARNESS=1` the layer runs the same commands as
+`tools/harness/proxy.c` (`wait`, `waitupd`, `click`, `rclick`, `dbl`, `key`,
+`move`, `menu`, `cmd`, `ctl`, `edit`, `shot`) from `CMD.TXT`, and writes
+`LEMLOG.TXT` in the same format (each lemming's first 0x5c bytes as in the 32-bit
+layout, its pointers cut to 32 bits). `tools/cmplog.py` then compares a native run
+with `build/runs/hd-base-l1.txt` and `hd-base-dig.txt`, the reference logs of the
+original game under Wine.
+
+---
+
+## 4. Build
+
+```
+cmake -S . -B build/native -G Ninja
+cmake --build build/native
+build/native/lemmings --data orig/WINLEMM      # macOS: build/native/Lemmings.app
+```
+
+- The 7 DLLs become static libraries linked into one executable with the layer;
+  the game files are compiled with `-DPORT_SDL -include port_prefix.h
+  -Iport/include -Isrc/include`, C99 / C++98-compatible as now.
+- Per-module definitions keep the DLLs apart: the renames of section 2.3 and
+  each module's own `rand`.
+- Needs CMake ≥ 3.21, a C/C++ compiler, Python 3 (for `rc2c.py`) and SDL3
+  (≥ 3.2). On macOS: Homebrew's `sdl3`, already installed on this Mac (3.4.18).
+- The MinGW `Makefile` and `tools/msvc/` are not touched. Checks after each step:
+  `make` still builds, and `python3 tools/msvc/build.py --funcs` still reports
+  696/696 (the `#ifdef PORT_SDL` changes are invisible to Visual C++).
+- `.github/workflows/macos-build.yml` on `macOS-64`: builds the arm64 executable
+  on `macos-latest` with Homebrew SDL3 and uploads it. It cannot play the game
+  (no game data in CI).
+
+---
+
+## 5. Changes to the game's sources
+
+Rules: only where the 64-bit build cannot compile or work otherwise; each change
+inside `#ifdef PORT_SDL … #else original #endif`, so Visual C++ 2.2 and MinGW
+see exactly what they see on `main`; each listed here.
+
+Expected (section 2.3): `window.cpp`, `statusbar.cpp`, `frame.cpp`,
+`winmain.cpp` + `winlemm.h` (`g_global28`), `midi.cpp`, `mainwnd.cpp`. More may
+turn up when the sources first compile for arm64.
+
+| File | Change |
+|---|---|
+| (none yet) | |
+
+---
+
+## 6. Order of work
+
+1. **Headers and build.** `port/include`, `CMakeLists.txt`, `rc2c.py`; all game
+   sources compile for arm64; the `#ifdef PORT_SDL` changes of section 5.
+2. **Windows, drawing, input, loop.** Window manager, message loop, timers, GDI
+   with DIB sections, the font; the splash screen and the title screen appear.
+3. **Files and settings.** Path translation, registry file; the registration
+   and player dialogs need the dialog manager, so that comes next.
+4. **Dialogs and menus.** Dialog manager, the standard controls, the menu bar;
+   registration, player selection, options, level selection.
+5. **The game.** Level 1 plays: game view with scroll bars, docked icon panel
+   and map, status bar; the end screen; floating tool windows.
+6. **Sound.** WAV effects, then music (with the synthesizer chosen in question 1).
+7. **Checks.** The harness; level 1 and the digger run compared with the
+   reference logs; a level ends cleanly; `make` and the 696/696 matching build
+   still work.
+8. **macOS packaging and CI.** App bundle, the CI workflow, README section.
+
+---
+
+## 7. Risks
+
+- **Size of the layer.** The Win32 part the game needs is still a lot (window
+  manager, dialogs, five control types, menus, GDI). It is bounded by the
+  inventory; missing pieces fail at compile time, not at run time.
+- **Behaviour differences.** Some game code depends on exact Win32 message order
+  (e.g. `WM_SIZE` before `WM_CREATE` returns, `WM_ERASEBKGND` in `BeginPaint`,
+  `SetParent` on the dock windows). The harness and the reference logs catch
+  differences that change the game; look and feel are checked by eye.
+- **Fonts and layout.** Without MS Sans Serif, dialog text may not fit its
+  controls exactly; the built-in font is sized to its metrics.
+- **Floating tool windows.** The dock drag draws an outline on the desktop,
+  which SDL cannot draw on: the outline is left out (the docking itself works).
+  Popup windows and modal dialogs depend on the window manager (macOS, X11,
+  Wayland) more than the rest.
+- **Timing.** The game steps every 80 ms from its idle loop. Presenting frames
+  and SDL's event handling must not delay it; the harness counts updates, so
+  logs stay comparable.
+- **Unaligned reads.** Sprite offsets are read as `DWORD` at 2-byte-aligned
+  addresses; arm64 and x86-64 allow that, but it is undefined in C. The build
+  uses `-fno-strict-aliasing`; checked with UBSan once.
+- **Windows-64 later.** On Windows the layer's `windows.h` replaces the SDK's for
+  the game's files; the layer's own files must not mix the two. To check when
+  merging into `windows-64`.
+
+---
+
+## 8. Open questions
+
+1. **Music synthesizer** (the MIDI files need one; nothing in the original data
+   can play them):
+   - *TinySoundFont* + *TinyMidiLoader* (MIT, two header files added to
+     `port/`), with a General MIDI SoundFont (`.sf2`). By default the small
+     *Vintage Dreams Waves v2* (314 KB, Ian Wilson 1996–98, freeware that may be
+     redistributed unaltered with its notice; FluidSynth ships it, and Homebrew's
+     `fluid-synth` put a copy on this Mac) shipped with the game, and any other
+     SoundFont (for example GeneralUser GS, about 30 MB) chosen by a setting. No
+     extra library, music works out of the box on all three platforms.
+     Recommended.
+   - *FluidSynth* (LGPL, a system library: Homebrew, apt, vcpkg) with a
+     SoundFont as above. More complete, one more dependency on every platform.
+   - An *FM synthesizer* emulating a 1995 Sound Blaster (OPL3), with a built-in
+     instrument set: no SoundFont, period sound; more code and licence checks.
+   - Each operating system's own MIDI synth (Core Audio's on macOS, `midiOut` on
+     Windows; Linux has none built in): no files, but platform code outside the
+     shared layer.
+2. **Third-party code in the repository:** may small permissively licensed
+   libraries be added under `port/third_party/` (for example the two
+   TinySoundFont headers)?
+
+---
+
+## Appendix A. Win32 functions per source file
+
+From the MinGW build's objects (`build/obj`), without `src/crt`.
+
+| File | Functions |
+|---|---|
+| `filehand/filehand.c` | CloseHandle CreateFileA ExitProcess GetFileSize MessageBoxA ReadFile wsprintfA |
+| `gameover/gameover.c` | LoadStringA |
+| `lemmings/about.cpp` | CreateFontA DeleteObject EndDialog GetDC GetDeviceCaps GetDlgItem GetDlgItemTextA GetModuleFileNameA GetVersion GetWindow GetWindowRect ReleaseDC SendMessageA SetDlgItemTextA SetWindowPos lstrcatA lstrcpyA lstrlenA midiOutGetDevCapsA wsprintfA |
+| `lemmings/dockwnd.cpp` | ClientToScreen CreateHatchBrush DefWindowProcA DeleteObject GetAsyncKeyState GetClientRect GetCursorPos GetDC GetDesktopWindow GetSysColor GetWindowLongA GetWindowRect IntersectRect LoadCursorA PatBlt ReleaseDC SelectObject SendMessageA SetCursor SetParent SetWindowLongA SetWindowPos ShowWindow |
+| `lemmings/endscreen.cpp` | BeginPaint DefWindowProcA DeleteObject DestroyWindow DialogBoxParamA EndPaint GetDC PostMessageA RealizePalette ReleaseCapture ReleaseDC SelectPalette SetCapture SetWindowTextA ShowWindow WinHelpA wsprintfA |
+| `lemmings/frame.cpp` | AdjustWindowRect BeginPaint CreatePalette CreateSolidBrush CreateWindowExA DefWindowProcA DeleteObject DestroyMenu EndPaint FindWindowA GetClientRect GetDC GetMenu GetPaletteEntries GetSysColor GetSystemMetrics GetSystemPaletteEntries GetWindowRect InvalidateRect LoadCursorA LoadIconA LoadMenuA PatBlt PostQuitMessage RealizePalette RegisterClassA ReleaseDC SelectObject SelectPalette SendMessageA SetMenu SetWindowPos ShowWindow UnrealizeObject UpdateColors wsprintfA |
+| `lemmings/frontend.cpp` | BeginPaint CreateDCA DefWindowProcA DeleteDC DeleteObject DestroyWindow DialogBoxParamA EndPaint GetDC GetDeviceCaps PostMessageA RealizePalette ReleaseCapture ReleaseDC SelectPalette SendMessageA SetCapture SetWindowPos SetWindowTextA WinHelpA wsprintfA |
+| `lemmings/gameview.cpp` | BeginPaint ChildWindowFromPoint ClientToScreen CreateWindowExA DefWindowProcA EndPaint GetAsyncKeyState GetClientRect GetCursor GetCursorPos GetDC GetParent GetStockObject GetSystemMetrics GetWindowRect InvalidateRect KillTimer LoadIconA PostMessageA PtInRect RealizePalette RegisterClassA ReleaseCapture ReleaseDC ScreenToClient ScrollWindow SelectPalette SendMessageA SetCapture SetCursor SetScrollPos SetScrollRange SetTimer SetWindowPos SetWindowTextA UpdateWindow WindowFromPoint wsprintfA |
+| `lemmings/icons.cpp` | CreateFontA CreateSolidBrush DefWindowProcA DeleteObject ExtTextOutA FillRect GetDC GetDesktopWindow GetDeviceCaps GetStockObject GetSysColor GetTextMetricsA InvalidateRect KillTimer LoadCursorA MessageBoxA MulDiv PostMessageA ReleaseCapture ReleaseDC SelectObject SendMessageA SetBkColor SetBkMode SetCapture SetCursor SetTimer SetWindowPos ShowWindow wsprintfA |
+| `lemmings/idle.cpp` | ExitProcess MessageBoxA PostMessageA Sleep timeGetTime wsprintfA |
+| `lemmings/levelsel.cpp` | BeginPaint CreateBrushIndirect CreateCompatibleDC CreatePalette DefWindowProcA DeleteDC DeleteObject DialogBoxParamA EnableWindow EndDialog EndPaint ExtTextOutA GetClientRect GetDlgItem GetLastError GetObjectA GetPaletteEntries GetStockObject GetSysColor GetTextExtentPointA GetWindowTextA GetWindowWord InvalidateRect MessageBoxA PostMessageA RealizePalette Rectangle RegisterClassA SelectObject SelectPalette SendMessageA SetBkColor SetWindowTextA SetWindowWord StretchBlt UnrealizeObject _lclose _llseek _lopen _lread _lwrite wsprintfA |
+| `lemmings/mainwnd.cpp` | ClientToScreen CreateWindowExA DefWindowProcA DestroyWindow DialogBoxParamA EnableMenuItem GetClientRect GetDC GetDeviceCaps GetSystemMetrics GetWindowRect GetWindowTextA LoadCursorA LoadIconA RegisterClassA ReleaseDC SendMessageA SetWindowPos SetWindowTextA ShowWindow WinHelpA |
+| `lemmings/map.cpp` | BitBlt CreateCompatibleDC CreateDIBSection CreatePalette DefWindowProcA DeleteDC DeleteObject GetDC GetNearestPaletteIndex GetSystemPaletteEntries InvalidateRect KillTimer LoadCursorA ReleaseDC SelectObject SendMessageA SetCursor SetTimer SetWindowPos ShowWindow |
+| `lemmings/midi.cpp` | MessageBoxA mciGetErrorStringA mciSendCommandA timeGetTime wsprintfA |
+| `lemmings/options.cpp` | CheckDlgButton EnableWindow EndDialog GetDlgItem GetSysColor IsDlgButtonChecked MessageBoxA PostMessageA |
+| `lemmings/register.cpp` | EndDialog GetDesktopWindow GetDlgItem GetWindowTextA MessageBoxA wsprintfA |
+| `lemmings/registry.cpp` | MessageBoxA RegCloseKey RegCreateKeyExA RegDeleteKeyA RegEnumKeyExA RegFlushKey RegOpenKeyExA RegQueryValueExA RegSetValueExA wsprintfA |
+| `lemmings/settings.cpp` | DeleteFileA DialogBoxParamA ExitProcess GetClientRect GetDesktopWindow MessageBoxA PtInRect _filelength _fileno _lclose _lopen _lread wsprintfA |
+| `lemmings/splash.cpp` | BeginPaint BitBlt CreateCompatibleDC CreateFontA CreateSolidBrush CreateWindowExA DefWindowProcA DeleteDC DeleteObject DestroyWindow EndPaint GetClientRect GetDC GetDesktopWindow GetDeviceCaps GetSysColor GetSystemMetrics GetWindowDC LoadCursorA MulDiv PatBlt RealizePalette RegisterClassA ReleaseDC SelectObject SelectPalette SetBkMode ShowWindow TextOutA UpdateWindow wsprintfA |
+| `lemmings/statusbar.cpp` | BeginPaint CreateFontA CreateSolidBrush CreateWindowExA DefWindowProcA DeleteObject EndPaint ExtTextOutA FillRect GetClientRect GetDC GetDeviceCaps GetStockObject GetSysColor GetSystemMetrics GetTextMetricsA GetWindowLongA InvalidateRect LoadCursorA MulDiv RegisterClassA ReleaseDC SelectObject SendMessageA SetBkColor SetTextColor SetWindowLongA lstrlenA wsprintfA |
+| `lemmings/treelist.cpp` | BitBlt CopyRect CreateCompatibleDC CreateDIBitmap DeleteDC DeleteObject DrawFocusRect ExtTextOutA FindResourceA FreeResource GetClientRect GetDC GetSysColor GetTextMetricsA LoadResource LockResource ReleaseDC SelectObject SendMessageA SetBkColor SetTextColor lstrlenA |
+| `lemmings/user.cpp` | CreateDirectoryA DialogBoxParamA EnableWindow EndDialog ExitProcess GetDlgItem GetLastError GetWindowTextA GetWindowsDirectoryA IsWindowEnabled MessageBoxA SendMessageA SetFocus SetWindowTextA _filelength _fileno _unlink wsprintfA |
+| `lemmings/window.cpp` | AdjustWindowRect BeginPaint ChildWindowFromPoint ClientToScreen CreateWindowExA DefWindowProcA DestroyWindow EndPaint ExtTextOutA GetClientRect GetCursorPos GetDC GetLastError GetWindowLongA LoadIconA PtInRect RegisterClassA ReleaseDC ScreenToClient SetBkColor SetCursor SetWindowLongA SetWindowPos ShowWindow |
+| `lemmings/winmain.cpp` | DestroyCursor DispatchMessageA ExitProcess GetCurrentDirectoryA GetDC GetDeviceCaps GetLastError GetSystemMetrics GetVersion GlobalMemoryStatus LoadAcceleratorsA LoadCursorA LoadStringA MessageBoxA PeekMessageA PostMessageA ReleaseDC SetWindowPos ShowWindow TranslateAcceleratorA TranslateMessage WaitMessage timeGetTime wsprintfA |
+| `loadlvl/loadlvl.c` | ExitProcess MessageBoxA _lwrite wsprintfA |
+| `process/lemmings.cpp` | GetAsyncKeyState MessageBoxA |
+| `process/objects.cpp`, `process/process.cpp`, `process/script.cpp` | ExitProcess MessageBoxA wsprintfA (and `fopen`/`fgetc` in `script.cpp`) |
+| `process/wave.cpp` | DefWindowProcA DestroyWindow SetWindowTextA lstrcatA lstrcpyA mmioAscend mmioClose mmioDescend mmioOpenA mmioRead waveOutClose waveOutGetDevCapsA waveOutGetNumDevs waveOutGetPosition waveOutOpen waveOutPrepareHeader waveOutReset waveOutUnprepareHeader waveOutWrite |
+| `readdib/readdib.c` | CreateDCA CreateDIBitmap CreatePalette DeleteDC ExitProcess MessageBoxA RealizePalette SelectPalette wsprintfA |
+| `render/render.c` | BitBlt CreateCompatibleDC CreateDIBSection DeleteDC DeleteObject ExitProcess GdiFlush MessageBoxA SelectObject StretchBlt StretchDIBits timeGetTime wsprintfA |
+| `vsmem/vsmem.c` | ExitProcess GlobalAlloc GlobalFree GlobalLock GlobalUnlock MessageBoxA OutputDebugStringA wsprintfA |
