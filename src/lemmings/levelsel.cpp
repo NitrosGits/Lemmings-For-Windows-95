@@ -530,7 +530,7 @@ void OpenLevelItem(HWND hDlg, HWND list, int i, WORD sel)
 {
     int show;
     int prev;
-    int t;
+    unsigned t;
     int id = g_db->entries[i].id;
     int type = g_db->entries[i].type;
     int childType = g_db->entries[i].childType;
@@ -575,10 +575,8 @@ void OpenLevelItem(HWND hDlg, HWND list, int i, WORD sel)
     if (type == 0x101 || type == 0x102) {
         SendMessage(list, WM_SETREDRAW, FALSE, 0);
         WORD pos = sel;
-        WORD *posPtr = &pos;
         LevelIndex(g_currentLevel);
         int added = 0;
-        int *countPtr = &added;
         j = id;
         while (children) {
             j++;
@@ -586,26 +584,30 @@ void OpenLevelItem(HWND hDlg, HWND list, int i, WORD sel)
             status = g_db->entries[j].status;
             if (childType == t) {
                 children--;
-                ++*posPtr;
+                pos++;
                 show = 1;
-                if (t == 3)
+                /* Setting prev in both branches makes it dearer to spill than added (VC++ 2.2). */
+                if (t != 3)
+                    prev = status;
+                else {
                     show = prev || status;
-                prev = status;
+                    prev = status;
+                }
                 if (show) {
                     SendMessage(list, LB_INSERTSTRING, pos, j);
-                    ++*countPtr;
+                    added++;
                 }
             }
         }
-        short value = *(WORD *)countPtr;
-        g_db->entries[i].shown = value;
-        /* Keep the count live through this point for VC++ 2.2 register allocation. */
-        switch (value) { case 1: break; }
+        g_db->entries[i].shown = added;
         TreeEnsureVisible(&g_treeNext, list, sel, 9);
         SendMessage(list, WM_SETREDRAW, TRUE, 0);
         InvalidateRect(list, 0, TRUE);
     }
 }
+
+/* Symbol padding (see docs/DECOMP.md): the original had more declarations here. */
+extern int pad_openlevelitem0, pad_openlevelitem1, pad_openlevelitem2, pad_openlevelitem3, pad_openlevelitem4, pad_openlevelitem5, pad_openlevelitem6, pad_openlevelitem7;
 
 /* 0x40b6f0 */
 void DrawBlank(HDC hdc, RECT *r, int index)
