@@ -5,8 +5,9 @@
 #
 # Needs a MinGW-w64 compiler for 32-bit Windows (GCC or llvm-mingw's Clang)
 # and Python 3. On macOS/Linux it is the cross compiler i686-w64-mingw32-*;
-# on Windows, run make from an MSYS2 MINGW32 shell (plain gcc, dlltool, ...)
-# or with llvm-mingw on the PATH. CROSS=prefix overrides the tool names.
+# on Windows, run make in an MSYS2 shell with llvm-mingw's bin on the PATH, or
+# from an MSYS2 MINGW32 shell (plain gcc, dlltool, ...; MSYS2 is phasing out
+# its 32-bit environments). CROSS=prefix overrides the tool names.
 # The byte-matching build with Visual C++ 2.2 is tools/msvc/build.py.
 
 ifeq ($(OS),Windows_NT)

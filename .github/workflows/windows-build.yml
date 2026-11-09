@@ -5,8 +5,9 @@
 #
 #   win32            llvm-mingw on Ubuntu, the toolchain used in development;
 #                    its binaries are the downloadable artifact
-#   msys2-mingw32    the native Windows route from the README (MSYS2 MINGW32,
-#                    GCC), built to keep it working
+#   windows-native   the native Windows route from the README (llvm-mingw for
+#                    Windows, with make, sh and Python from MSYS2's MSYS
+#                    environment), built to keep it working
 #
 # The byte-matching build needs Visual C++ 2.2 and the original game files,
 # neither of which can be in the repository, so it is not run here.
@@ -61,9 +62,12 @@ jobs:
           path: build/out/
           if-no-files-found: error
 
-  msys2-mingw32:
-    name: Windows native build (MSYS2 MINGW32)
+  windows-native:
+    name: Windows native build (llvm-mingw + MSYS2 make)
     runs-on: windows-latest
+    env:
+      LLVM_MINGW: llvm-mingw-20260826-ucrt-x86_64
+      LLVM_MINGW_SHA256: ae601f4e0f72bbdf441ad2df8bb16f037e2e9251559ea6b37b4057aef39c06c3
     defaults:
       run:
         shell: msys2 {0}
@@ -75,14 +79,25 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      - name: Install llvm-mingw
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'llvm-mingw.zip'
+          Invoke-WebRequest -Uri "https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/$env:LLVM_MINGW.zip" -OutFile $zip
+          $hash = (Get-FileHash -Algorithm SHA256 $zip).Hash
+          if ($hash -ne $env:LLVM_MINGW_SHA256) { throw "llvm-mingw.zip: SHA-256 $hash does not match" }
+          tar -xf $zip -C $env:RUNNER_TEMP
+
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW32
+          msystem: MSYS
           update: true
-          install: make python mingw-w64-i686-gcc
+          install: make python
 
       - name: Build
-        run: make -j4
+        run: |
+          export PATH="$(cygpath -u "$RUNNER_TEMP")/$LLVM_MINGW/bin:$PATH"
+          make -j4
 
       - name: Check the outputs
         run: |

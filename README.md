@@ -76,21 +76,22 @@ The project builds on Windows, macOS and Linux. On Windows the game and the orig
 
 | | Windows | macOS | Linux |
 |---|---|---|---|
-| Portable build (`make`) | MSYS2 MINGW32 shell | MinGW-w64 cross compiler | MinGW-w64 cross compiler |
+| Portable build (`make`) | llvm-mingw + MSYS2 | MinGW-w64 cross compiler | MinGW-w64 cross compiler |
 | Running the game | directly | Wine | Wine |
 | Matching build (Visual C++ 2.2) | directly | Wine | Wine |
 
 ### 1. Prerequisites
 
-- **Windows**: [MSYS2](https://www.msys2.org). In its **MINGW32** shell, install the 32-bit GCC, make and Python:
+- **Windows**: [llvm-mingw](https://github.com/mstorsjo/llvm-mingw/releases) for the compiler (the `ucrt-x86_64` zip, or `ucrt-aarch64` on ARM; just unpack it), and [MSYS2](https://www.msys2.org) for `make`, a shell and Python. In the MSYS2 **MSYS** shell:
   ```bash
-  pacman -S make mingw-w64-i686-gcc python
+  pacman -S make python binutils
+  export PATH=/c/llvm-mingw/bin:$PATH   # the folder you unpacked llvm-mingw into
   ```
-  A python.org Python on the `PATH` works too. [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) also works: put its `bin` folder on the `PATH` in an MSYS2 shell. No Wine is needed.
+  A python.org Python on the `PATH` works too. MSYS2's own 32-bit GCC (`mingw-w64-i686-gcc` in the MINGW32 shell) also builds the game, but MSYS2 is phasing out its 32-bit environments. No Wine is needed.
 - **macOS**: a MinGW-w64 cross compiler (`brew install mingw-w64`, or [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)), GNU `make` and Python 3. Wine (for example Homebrew's `wine-stable` cask) is needed to run the game and the matching compiler.
 - **Linux** (Debian/Ubuntu names): `make`, `python3`, `gcc-mingw-w64-i686`, `g++-mingw-w64-i686`, and a Wine that can run 32-bit programs.
 
-The matching tools disassemble with a **GNU** `objdump`. MinGW-w64 GCC, MSYS2 and Linux binutils all provide one. llvm-mingw's `objdump` is LLVM's and does not work, so with llvm-mingw alone, install binutils or set `OBJDUMP` to a GNU objdump.
+The matching tools disassemble with a **GNU** `objdump`. MinGW-w64 GCC, MSYS2's `binutils` package and Linux binutils all provide one. llvm-mingw's `objdump` is LLVM's and does not work, so with llvm-mingw alone, install binutils or set `OBJDUMP` to a GNU objdump.
 
 ### 2. Portable Build (Modern Toolchain)
 
@@ -99,9 +100,9 @@ The portable build links against our freestanding CRT (`src/crt`) and needs no M
 # Build all DLLs and LEMMINGS.EXE into build/out/
 make -j4
 ```
-On macOS and Linux the Makefile uses the `i686-w64-mingw32-` cross tools. On Windows it picks MSYS2's plain `gcc`/`dlltool` names automatically. Use `make CROSS=<prefix>` for other tool names.
+On macOS and Linux the Makefile uses the `i686-w64-mingw32-` cross tools. On Windows it uses llvm-mingw's `i686-w64-mingw32-` tools when they are on the `PATH`, and otherwise MSYS2 MINGW32's plain `gcc`/`dlltool` names. Use `make CROSS=<prefix>` for other tool names.
 
-**Prebuilt binaries:** every push to `main` runs the [Windows build workflow](.github/workflows/windows-build.yml) on GitHub Actions. It builds the binaries with llvm-mingw and checks that the native MSYS2 MINGW32 build still works. Download `LEMMINGS.EXE` and the 7 DLLs from the `lemmings-win32` artifact of a run on the repository's **Actions** tab. They still need the original game's data files: copy them over an original installation.
+**Prebuilt binaries:** every push to `main` runs the [Windows build workflow](.github/workflows/windows-build.yml) on GitHub Actions. It builds the binaries with llvm-mingw and checks that the native Windows build (llvm-mingw with MSYS2's `make`) still works. Download `LEMMINGS.EXE` and the 7 DLLs from the `lemmings-win32` artifact of a run on the repository's **Actions** tab. They still need the original game's data files: copy them over an original installation.
 
 ### 3. Playing the Game
 
@@ -142,7 +143,7 @@ python3 tools/msvc/try.py PROCESS.DLL src/process/map.cpp -v -f Map::AddTrapType
 ```
 On Windows, use `python` or `py -3` if `python3` is not available. On macOS and Linux, `tools/msvc/try.sh` is the same command as `try.py`.
 
-Tested on Windows 11 (ARM64, in a VM) with a python.org Python and llvm-mingw: the matching build gives the same results as on macOS, and `make` produces the same binaries apart from their timestamps. The MSYS2 MINGW32 GCC and MSYS2-Python routes have not been tried on Windows yet. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
+Tested on Windows 11 (ARM64, in a VM) with a python.org Python and llvm-mingw: the matching build gives the same results as on macOS, and `make` produces the same binaries apart from their timestamps. GitHub Actions also builds natively on Windows with llvm-mingw and MSYS2's `make` and Python on every push. MSYS2's MINGW32 GCC built it there too (November 2026). The matching tools have not been tried with MSYS2's Python. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
 
 ---
 
