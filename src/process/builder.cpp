@@ -22,7 +22,9 @@ void Builder::Process(LEMMING *l, DLENTRY **list)
         y = l->y - 1;
         l->x = x;
         l->y = y;
-        if (g_map->GetPixel(x, y - 1) || g_map->GetPixel(x += l->dir, y - 1)) {
+        /* `l->dir ? 1 : 1` (always 1) makes VC++ 2.2 load l->dir into a register before the add,
+           so the second y - 1 is renamed to ecx as in the original (folded back to add ebx,[mem]). */
+        if (g_map->GetPixel(x, y - 1) || g_map->GetPixel(x += l->dir, y - (l->dir ? 1 : 1))) {
             l->x = x;
             l->y = y;
             l->dir = -l->dir;
