@@ -467,13 +467,27 @@ static void run(char *line)
     } else if (w && !strncmp(line, "ctls", 4)) {
         Wnd *c;
 
+        /* each control's class, id, text and state (no handles: the checks compare these lines) */
         for (c = w->child; c; c = c->next) {
-            char t[128];
+            char t[128], st[160] = "";
 
-            port_strlcpy(t, c->text, sizeof t);
+            GetWindowTextA(c->h, t, sizeof t);
             plain(t);
-            port_harness_log("  ctl %p class '%s' text '%s' checked %ld", (void *)c->h, c->cls->name, t,
-                             (long)SendMessageA(c->h, BM_GETCHECK, 0, 0));
+            if (!strcasecmp(c->cls->name, "Button"))
+                snprintf(st, sizeof st, " checked %ld", (long)SendMessageA(c->h, BM_GETCHECK, 0, 0));
+            else if (!strcasecmp(c->cls->name, "ListBox")) {
+                long sel = (long)SendMessageA(c->h, LB_GETCURSEL, 0, 0);
+                char it[128] = "";
+
+                if (sel >= 0 && (!(c->style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE)) ||
+                                 (c->style & LBS_HASSTRINGS)) &&
+                    SendMessageA(c->h, LB_GETTEXTLEN, (WPARAM)sel, 0) < (LRESULT)sizeof it)
+                    SendMessageA(c->h, LB_GETTEXT, (WPARAM)sel, (LPARAM)it);
+                snprintf(st, sizeof st, " count %ld sel %ld '%s'", (long)SendMessageA(c->h, LB_GETCOUNT, 0, 0), sel,
+                         it);
+            }
+            port_harness_log("  ctl %s %d '%s'%s%s", c->cls->name, (int)c->id, t, st,
+                             (c->style & WS_DISABLED) ? " disabled" : "");
         }
     } else if (w && sscanf(line, "ctl %199[^\n]", a) == 1) {
         Wnd *c, *found = NULL;

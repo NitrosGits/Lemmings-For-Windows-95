@@ -1,0 +1,21 @@
+  ctl Edit 1002 'Tester'
+  ctl ListBox 1001 '' count 1 sel -1 ''
+  ctl Button 1 'OK' checked 0
+  ctl Button 2 'Cancel' checked 0
+  ctl Static -1 'Type new player name or select from list'
+  ctl Static -1 'Lemmings'
+  ctl Button 1003 'Delete Player' checked 0 disabled
+  ctl Edit 1002 'Testerxy'
+  ctl ListBox 1001 '' count 1 sel -1 ''
+  ctl Button 1 'OK' checked 0
+  ctl Button 2 'Cancel' checked 0
+  ctl Static -1 'Type new player name or select from list'
+  ctl Static -1 'Lemmings'
+  ctl Button 1003 'Delete Player' checked 0 disabled
+  ctl Edit 1002 'Tester'
+  ctl ListBox 1001 '' count 1 sel 0 'Tester'
+  ctl Button 1 'OK' checked 0
+  ctl Button 2 'Cancel' checked 0
+  ctl Static -1 'Type new player name or select from list'
+  ctl Static -1 'Lemmings'
+  ctl Button 1003 'Delete Player' checked 0 disabled

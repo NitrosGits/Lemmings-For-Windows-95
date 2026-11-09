@@ -1,0 +1,28 @@
+  ctl Button 1 'OK' checked 0
+  ctl Button 2 'Cancel' checked 0
+  ctl Button 8193 'Sound Effects On' checked 0 disabled
+  ctl Button 8194 'Music On' checked 1
+  ctl Button 8195 'Visual Sound Effects' checked 1
+  ctl Button 8196 'Pause When Not On Top' checked 0
+  ctl Button 388 'Low Resolution' checked 0
+  ctl Button 389 'High Resolution' checked 1
+  ctl Button -1 'Graphics Options' checked 0
+  ctl Button -1 'Zoom' checked 0
+  ctl Button 1000 '1' checked 1
+  ctl Button 1001 '2' checked 0
+  ctl Button 1002 '4' checked 0
+  ctl Button -1 'Sound' checked 0
+  ctl Button 1 'OK' checked 0
+  ctl Button 2 'Cancel' checked 0
+  ctl Button 8193 'Sound Effects On' checked 0 disabled
+  ctl Button 8194 'Music On' checked 0
+  ctl Button 8195 'Visual Sound Effects' checked 1
+  ctl Button 8196 'Pause When Not On Top' checked 0
+  ctl Button 388 'Low Resolution' checked 1
+  ctl Button 389 'High Resolution' checked 0
+  ctl Button -1 'Graphics Options' checked 0
+  ctl Button -1 'Zoom' checked 0
+  ctl Button 1000 '1' checked 1
+  ctl Button 1001 '2' checked 0
+  ctl Button 1002 '4' checked 0
+  ctl Button -1 'Sound' checked 0
