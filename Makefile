@@ -14,7 +14,10 @@ ifeq ($(OS),Windows_NT)
   ifeq ($(shell command -v i686-w64-mingw32-dlltool 2>/dev/null),)
     CROSS ?=
   endif
-  PYTHON ?= $(if $(shell command -v python3 2>/dev/null),python3,python)
+  # python3 may be the Microsoft Store stub, which exists but does not run
+  ifndef PYTHON
+    PYTHON := $(shell python3 -c "" >/dev/null 2>&1 && echo python3 || echo python)
+  endif
 endif
 CROSS   ?= i686-w64-mingw32-
 PYTHON  ?= python3

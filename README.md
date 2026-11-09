@@ -140,7 +140,7 @@ python3 tools/msvc/try.py PROCESS.DLL src/process/map.cpp -v -f Map::AddTrapType
 ```
 On Windows, use `python` or `py -3` if `python3` is not available. On macOS and Linux, `tools/msvc/try.sh` is the same command as `try.py`.
 
-The Windows path of these tools (`tools/msvc/msvc.py`) is new and has not been tested on a Windows machine yet. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
+Tested on Windows 11 (ARM64, in a VM) with a python.org Python and llvm-mingw: the matching build gives the same results as on macOS, and `make` produces the same binaries apart from their timestamps. The MSYS2 MINGW32 GCC and MSYS2-Python routes have not been tried on Windows yet. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
 
 ---
 

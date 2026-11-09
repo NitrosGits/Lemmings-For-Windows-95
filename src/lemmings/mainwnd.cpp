@@ -25,6 +25,36 @@ int g_unusedTable[23] = {
     0, 0, 0x15e, 0, 0x15f, 0, 0x160, 0, 0x161, 0, 0,
     0, 0x162, 0, 0x165, 0x163, 0x164, 0, 0, 0x16f, 0x171, 0, 0x173,
 };
+#ifndef _MSC_VER
+/*
+ * Portable build only. The original deletes the icon and map windows at the
+ * end of a level but leaves them in g_dockList until the next StartGame, and
+ * SaveLayout/LayoutWindows still go through them in between: their m_rect
+ * sets the dock heights, and Move() does nothing once the window is destroyed.
+ * That is harmless with VC++'s heap, which leaves a freed block's contents
+ * alone, but the Windows heap overwrites the start of the block (the vtable
+ * pointer) and the game crashes when a level ends. So here the destructor runs
+ * at the same point but the memory is kept until the docks are emptied.
+ */
+static void *g_retiredWnds[8];
+static int g_numRetiredWnds;
+
+template <class T> static void DeleteDockWnd(T *w)
+{
+    w->T::~T();
+    if (g_numRetiredWnds < 8)
+        g_retiredWnds[g_numRetiredWnds++] = w;
+}
+
+static void FreeRetiredDockWnds(void)
+{
+    while (g_numRetiredWnds)
+        ::operator delete(g_retiredWnds[--g_numRetiredWnds]);
+}
+#define DELETE_DOCKWND(w) DeleteDockWnd(w)
+#else
+#define DELETE_DOCKWND(w) delete w
+#endif
 int g_paused = 0;
 int g_nuking = 0;
 int g_fastForward = 0;
@@ -114,6 +144,9 @@ int StartGame(HINSTANCE hInstance, int nCmdShow)
     g_mapWnd->Create(&r, g_hwnd, "Map Wnd");
     g_dockList[0].count = 0;
     g_dockList[1].count = 0;
+#ifndef _MSC_VER
+    FreeRetiredDockWnds();      /* the old windows are out of the docks now */
+#endif
     if (g_savedIconDock != -1) {
         g_dockList[g_savedIconDock].Add(g_iconWnd);
         g_iconWnd->m_dock = &g_dockList[g_savedIconDock];
@@ -150,9 +183,9 @@ void EndGame(void)
     g_spareGameRunning = 0;
     DestroyWindow(g_hwndView);
     g_iconWnd->Destroy();
-    delete g_iconWnd;
+    DELETE_DOCKWND(g_iconWnd);
     g_mapWnd->Destroy();
-    delete g_mapWnd;
+    DELETE_DOCKWND(g_mapWnd);
     g_iconWnd = 0;
     g_mapWnd = 0;
     g_global2c = 0;
@@ -243,12 +276,12 @@ LRESULT CALLBACK MainWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         SaveLayout();
         if (g_iconWnd) {
             g_iconWnd->Destroy();
-            delete g_iconWnd;
+            DELETE_DOCKWND(g_iconWnd);
             g_iconWnd = 0;
         }
         if (g_mapWnd) {
             g_mapWnd->Destroy();
-            delete g_mapWnd;
+            DELETE_DOCKWND(g_mapWnd);
             g_mapWnd = 0;
         }
         break;
