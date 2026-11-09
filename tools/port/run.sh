@@ -61,12 +61,12 @@ LEMMINGS_HARNESS=1 LEMMINGS_HARNESS_DIR=$R LEMMINGS_PREFS=$R/prefs LEMMINGS_SOUN
 pid=$!
 t=0
 until grep -q "shot end" $R/CMDLOG.TXT 2>/dev/null || [ $t -gt ${TIMEOUT:-300} ] || ! kill -0 $pid 2>/dev/null; do sleep 1; t=$((t+1)); done
-kill $pid 2>/dev/null
-wait $pid 2>/dev/null
+if kill -0 $pid 2>/dev/null; then kill $pid; wait $pid 2>/dev/null; how="stopped by run.sh"
+else wait $pid; how="exited with code $?"; fi
 cp $R/LEMLOG.TXT $OUT/$1.txt 2>/dev/null
 cp $R/CMDLOG.TXT $OUT/$1.cmd 2>/dev/null
 [ -f $R/end.BMP ] && cp $R/end.BMP $OUT/$1.bmp
-echo "run $1: $(grep -c '' $OUT/$1.txt 2>/dev/null) log lines, ${t}s"
+echo "run $1: $(grep -c '' $OUT/$1.txt 2>/dev/null) log lines, ${t}s, game $how"
 if [[ -n $4 ]]; then
   python3 $ROOT/tools/cmplog.py $4 $OUT/$1.txt | tail -5
 fi

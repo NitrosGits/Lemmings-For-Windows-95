@@ -218,7 +218,12 @@ MMRESULT WINAPI waveOutWrite(HWAVEOUT h, LPWAVEHDR hdr, UINT size)
     retire(h, w);
     if (!SDL_PutAudioStreamData(w->stream, hdr->lpData, (int)hdr->dwBufferLength))
         return MMSYSERR_ERROR;
+    /* a buffer is a whole sound: without a flush SDL keeps its last samples back
+       for resampling, and the game would wait for the end of it for ever */
+    SDL_FlushAudioStream(w->stream);
     w->written += hdr->dwBufferLength;
+    port_trace("waveOutWrite %u bytes (%u Hz, %u bits, %u channels)", (unsigned)hdr->dwBufferLength,
+               (unsigned)w->fmt.nSamplesPerSec, (unsigned)w->fmt.wBitsPerSample, (unsigned)w->fmt.nChannels);
     hdr->dwFlags = (hdr->dwFlags & ~WHDR_DONE) | WHDR_INQUEUE;
     if (w->npending < 16) {
         w->pending[w->npending] = hdr;

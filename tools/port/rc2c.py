@@ -304,7 +304,7 @@ def emit(p, out):
         w('static const PortResMenuItem menu%d[] = {\n' % k)
         for it, sub in zip(items, subs):
             flags = {'popup': 'MF_POPUP', 'separator': 'MF_SEPARATOR', 'item': '0'}[it[2]]
-            w('    {%s, %d, %s, %d, %s},\n' % (cstr(it[0]), it[1], flags, len(it[3]) if sub else 0,
+            w('    {%s, %d, %s, %d, %s},\n' % (cstr(it[0]), it[1], flags, len(it[3]) if sub is not None else 0,
                                             'menu%d' % sub if sub is not None else 'NULL'))
         w('};\n')
         return k

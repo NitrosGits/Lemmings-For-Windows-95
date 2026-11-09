@@ -367,7 +367,8 @@ static void run(char *line)
 
         if (id)
             PostMessageA(f->h, WM_COMMAND, (WPARAM)id, 0);
-        port_harness_log("  menu '%s' id %d", a, id);
+        port_harness_log("  menu '%s' id %d (window %p, menu %p, %d items)", a, id, f ? (void *)f->h : NULL,
+                         f ? (void *)f->menu : NULL, f ? GetMenuItemCount(f->menu) : -1);
     } else if (w && sscanf(line, "edit %199[^\n]", a) == 1) {
         Wnd *c;
 
