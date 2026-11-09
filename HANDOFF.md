@@ -2931,3 +2931,28 @@ Antigravity's last Builder test (`s59_antigravity/builder_test.cpp`) equals prod
 | PROCESS | complete: basher.cpp, blocker.cpp, builder.cpp, climber.cpp, default.cpp, digger.cpp, drowner.cpp, exploder.cpp, explosion.cpp, faller.cpp, flapper.cpp, flipper.cpp, floater.cpp, frier.cpp, homer.cpp, lemmings.cpp, miner.cpp, script.cpp, shrugger.cpp, splatter.cpp, walker.cpp, map.cpp, objects.cpp, process.cpp, sound.cpp, wave.cpp, dllentry.cpp | all |
 | LEMMINGS | complete: winmain.cpp, options.cpp, about.cpp, mainwnd.cpp, idle.cpp, statusbar.cpp, gameview.cpp, frontend.cpp, settings.cpp, frame.cpp, endscreen.cpp, levelsel.cpp, treelist.cpp, midi.cpp, splash.cpp, replay.cpp, window.cpp, dockwnd.cpp, icons.cpp, map.cpp, user.cpp, registry.cpp, register.cpp | all |
 - **Correction (Claude s43):** the "Runtime coverage" line above is wrong: the original PROCESS.DLL has no reference to `Map::AddObjectType` (0x10004760) or `Map::AddTrapType` (0x10004880) (byte scan: no E8/E9 call or jump, no absolute address, not among the 29 exports; matches session 22's Hopper result), so both are dead code and no level, trap or otherwise, can run them. The user approved a trap-level run, but it was skipped because it could not touch either function. Instead, a 200,000-case random check (x, w, g_scale over small and full int32 ranges, 0..40 frames, both init forms) found the old `fx` loops and the new `(x + i * w) * g_scale` form give identical WORDs (0 mismatches).
+
+### Claude session 43 (continued, 2026-11-09): multi-platform build tools (user request: "Windows doesn't need Wine")
+- **New `tools/msvc/msvc.py`:** runs CL.EXE / LINK.EXE / RC.EXE from `build/vc22/MSVC20` (or `VCDIR`) directly on Windows (`os.name == 'nt'`), directly with `cygpath` path conversion under MSYS2/Cygwin Python, and under Wine elsewhere (prefix `build/wine-vc` or `VCPREFIX`, Unix paths mapped to `Z:` without calling winepath, same argument rules as the old cl.sh). `build.py` imports it (no more cl.sh), and its echo filter accepts any drive letter.
+- **New `tools/msvc/try.py`:** a line-for-line port of try.sh (same output path, MSVCFLAGS, echo filter, "compile failed", match.py exit code). `try.sh` and `cl.sh` are now one-line zsh wrappers for `try.py` / `msvc.py`, so every sweep script and the AGENTS.md command prefixes keep working unchanged.
+- **`tools/match.py`:** finds a GNU objdump (`$OBJDUMP`, the Homebrew path first as before, then PATH; LLVM objdump is skipped because it can't read raw `-b binary`), and puts its temp file in the system temp folder instead of `/tmp`.
+- **Makefile:** on Windows (`OS=Windows_NT`) uses MSYS2's unprefixed tool names when no `i686-w64-mingw32-dlltool` is on the PATH, and `python` when there is no `python3`; `make game` copies with `cp -Rp` instead of `rsync` (not in MSYS2 by default; `GAME`/`ORIG` can be overridden).
+- **README:** per-platform build section (prerequisites, portable build, playing, matching build setup and commands), saying the Windows path is untested and the research scripts (sweeps, c2dbg, `tools/wine/run.sh`) stay macOS/Linux.
+- **Verified on macOS (no Windows machine available, so the native and MSYS2 branches are untested):** old vs new try pipeline on all 56 matching-build sources (`build/scratch/s43_claude/xplat/cmp_try.py`): identical output, exit codes and .obj bytes; error path and `-v -f` identical. `build.py --funcs` for all 8 modules: logs identical to this session's earlier ones (696/696, same whole-file byte counts). Clean `make -j8` into a scratch dir: all 8 binaries identical to `build/out` apart from the PE timestamp; `make game` output identical to the old rsync copy (except the top-level `.DS_Store`), and a rerun does not nest folders. Build-path files handed back (AGENTS.md).
+| Module | Functions matching |
+|---|---|
+| VSMEM | 11/11 |
+| READDIB | 17/17 |
+| FILEHAND | 7/7 |
+| GAMEOVER | 3/3 |
+| LOADLVL | 41/41 |
+| RENDER | 77/77 |
+| PROCESS | 206/206 |
+| LEMMINGS | 334/334 |
+| **Total** | **696/696 (100%)** |
+
+| Module | File | Functions matching |
+|---|---|---|
+| PROCESS | complete: basher.cpp, blocker.cpp, builder.cpp, climber.cpp, default.cpp, digger.cpp, drowner.cpp, exploder.cpp, explosion.cpp, faller.cpp, flapper.cpp, flipper.cpp, floater.cpp, frier.cpp, homer.cpp, lemmings.cpp, miner.cpp, script.cpp, shrugger.cpp, splatter.cpp, walker.cpp, map.cpp, objects.cpp, process.cpp, sound.cpp, wave.cpp, dllentry.cpp | all |
+| LEMMINGS | complete: winmain.cpp, options.cpp, about.cpp, mainwnd.cpp, idle.cpp, statusbar.cpp, gameview.cpp, frontend.cpp, settings.cpp, frame.cpp, endscreen.cpp, levelsel.cpp, treelist.cpp, midi.cpp, splash.cpp, replay.cpp, window.cpp, dockwnd.cpp, icons.cpp, map.cpp, user.cpp, registry.cpp, register.cpp | all |
+- Claude s43 follow-up checks: (1) `msvc.py` under MSYS2/Cygwin Python sets `MSYS2_ARG_CONV_EXCL=*` and `MSYS_NO_PATHCONV=1` for the compiler process only, because MSYS2 rewrites arguments such as `/nologo` and `/OUT:x` into `C:/msys64/...` paths when it starts a Windows program (paths are already converted by cygpath). (2) MSYS2 checked on packages.msys2.org: `mingw-w64-i686-gcc` is still built for the mingw32 repo (16.2.0, 2026-10-13); its binutils install only plain `/mingw32/bin/dlltool.exe` etc., which is what the Makefile's empty-CROSS fallback expects. (3) Case-sensitive APFS image with a copy of src/, tools/, Makefile, orig/WINLEMM, build/vc22 at a different path (as on Linux): `make -j8` exit 0; `build.py --funcs` for all 8 modules created a fresh Wine prefix and gave 696/696 with the same whole-file byte counts; try.sh map.cpp 23/23, try.py levelsel.cpp 39/39. So no case-sensitivity or checkout-path dependence. `grep __FILE__/assert( src/`: none.

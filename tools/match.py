@@ -19,16 +19,36 @@ the functions that differ.
 import difflib
 import os
 import re
+import shutil
 import struct
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(__file__))
 from coff import Obj, IMAGE_REL_I386_DIR32, IMAGE_REL_I386_REL32  # noqa: E402
 from pe import PE  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GOBJDUMP = '/opt/homebrew/bin/i686-w64-mingw32-objdump'
+
+
+def gnu_objdump():
+    """A GNU objdump (any build reads raw i386 code; LLVM's objdump can't): $OBJDUMP, else the first found."""
+    if os.environ.get('OBJDUMP'):
+        return os.environ['OBJDUMP']
+    for c in ['/opt/homebrew/bin/i686-w64-mingw32-objdump', shutil.which('i686-w64-mingw32-objdump'),
+              shutil.which('objdump'), shutil.which('x86_64-w64-mingw32-objdump'), shutil.which('gobjdump')]:
+        if c and os.path.exists(c):
+            try:
+                v = subprocess.run([c, '--version'], capture_output=True, text=True).stdout
+            except OSError:
+                continue
+            if 'GNU' in v:
+                return c
+    sys.exit('match.py needs a GNU objdump (binutils, e.g. from MinGW-w64); set OBJDUMP to its path')
+
+
+GOBJDUMP = None
 
 
 def annotations(src):
@@ -82,7 +102,9 @@ def c_name(sym):
 
 
 def disasm(code, base):
-    p = '/tmp/_match_%d.bin' % os.getpid()
+    global GOBJDUMP
+    GOBJDUMP = GOBJDUMP or gnu_objdump()
+    p = os.path.join(tempfile.gettempdir(), '_match_%d.bin' % os.getpid())
     open(p, 'wb').write(code)
     out = subprocess.run([GOBJDUMP, '-D', '-b', 'binary', '-m', 'i386', '-M', 'intel',
                           f'--adjust-vma={base:#x}', p], capture_output=True, text=True).stdout

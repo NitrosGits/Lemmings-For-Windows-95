@@ -72,50 +72,75 @@ Across the entire game (1 executable + 7 DLLs), **all 696 functions (100%)** are
 
 ## Building the Project
 
-### 1. Portable Build (Modern Toolchain)
+The project builds on Windows, macOS and Linux. On Windows the game and the original compiler run directly. macOS and Linux use Wine for both.
 
-The portable build uses `mingw-w64` (GCC or `llvm-mingw` Clang) and links against our freestanding CRT, requiring no external MSVC runtime DLLs.
+| | Windows | macOS | Linux |
+|---|---|---|---|
+| Portable build (`make`) | MSYS2 MINGW32 shell | MinGW-w64 cross compiler | MinGW-w64 cross compiler |
+| Running the game | directly | Wine | Wine |
+| Matching build (Visual C++ 2.2) | directly | Wine | Wine |
 
-#### Prerequisites
-- **Linux / macOS**:
-  - `i686-w64-mingw32-gcc` and `i686-w64-mingw32-g++` (via package manager or [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)).
-  - GNU `make` and Python 3.
-- **Windows**:
-  - MSYS2 environment with `mingw-w64-i686-gcc` and `make`.
+### 1. Prerequisites
 
-#### Build Commands
+- **Windows**: [MSYS2](https://www.msys2.org). In its **MINGW32** shell, install the 32-bit GCC, make and Python:
+  ```bash
+  pacman -S make mingw-w64-i686-gcc python
+  ```
+  A python.org Python on the `PATH` works too. [llvm-mingw](https://github.com/mstorsjo/llvm-mingw) also works: put its `bin` folder on the `PATH` in an MSYS2 shell. No Wine is needed.
+- **macOS**: a MinGW-w64 cross compiler (`brew install mingw-w64`, or [llvm-mingw](https://github.com/mstorsjo/llvm-mingw)), GNU `make` and Python 3. Wine (for example Homebrew's `wine-stable` cask) is needed to run the game and the matching compiler.
+- **Linux** (Debian/Ubuntu names): `make`, `python3`, `gcc-mingw-w64-i686`, `g++-mingw-w64-i686`, and a Wine that can run 32-bit programs.
+
+The matching tools disassemble with a **GNU** `objdump`. MinGW-w64 GCC, MSYS2 and Linux binutils all provide one. llvm-mingw's `objdump` is LLVM's and does not work, so with llvm-mingw alone, install binutils or set `OBJDUMP` to a GNU objdump.
+
+### 2. Portable Build (Modern Toolchain)
+
+The portable build links against our freestanding CRT (`src/crt`) and needs no MSVC runtime DLLs:
 ```bash
 # Build all DLLs and LEMMINGS.EXE into build/out/
 make -j4
 ```
+On macOS and Linux the Makefile uses the `i686-w64-mingw32-` cross tools. On Windows it picks MSYS2's plain `gcc`/`dlltool` names automatically. Use `make CROSS=<prefix>` for other tool names.
 
-### 2. Playing the Game
+### 3. Playing the Game
 
-To run the game, original asset files (`.DAT`, `.WAV`, `.MID`, `.LVL`) are required.
+To run the game, the original game files (`.DAT`, `.WAV`, `.MID`, `.LVL`) are required.
 
 1. Place the original game directory in `orig/WINLEMM/` (or copy the built files over an existing installation).
-2. Run:
+2. Copy the original game data, with the freshly compiled binaries over it, into `build/game/`:
+   ```bash
+   make game
+   ```
+3. Run it:
+   - **Windows**: run `build/game/LEMMINGS.EXE` directly.
+   - **macOS / Linux**:
+     ```bash
+     wine build/game/LEMMINGS.EXE
+     ```
+
+### 4. Matching Build Verification (Visual C++ 2.2)
+
+The matching build compiles the source with the original compiler and compares the result with the 1995 binaries in `orig/WINLEMM/`.
+
+**Setup:** the compiler is not part of this repository. Copy the `BIN`, `INCLUDE` and `LIB` folders of your own Visual C++ 2.2 into `build/vc22/MSVC20/`, or set `VCDIR` to the folder that holds them.
+- **Windows**: `CL.EXE`, `LINK.EXE` and `RC.EXE` run directly.
+- **macOS / Linux**: they run under Wine, in their own prefix `build/wine-vc` (created on first use; `VCPREFIX` changes it).
+
 ```bash
-# Copies the original game data and overlays the freshly compiled binaries into build/game/
-make game
+# Every module: compile, link and compare the whole files
+python3 tools/msvc/build.py
 
-# Run under Wine or Windows:
-wine build/game/LEMMINGS.EXE
+# One module, also comparing each function
+python3 tools/msvc/build.py --funcs PROCESS
+
+# One file
+python3 tools/msvc/try.py PROCESS.DLL src/process/map.cpp
+
+# One function, with a side-by-side assembly diff
+python3 tools/msvc/try.py PROCESS.DLL src/process/map.cpp -v -f Map::AddTrapType
 ```
+On Windows, use `python` or `py -3` if `python3` is not available. On macOS and Linux, `tools/msvc/try.sh` is the same command as `try.py`.
 
-### 3. Matching Build Verification (MSVC 2.2)
-
-To verify matching status against the original 1995 binaries:
-```bash
-# Test an individual file:
-tools/msvc/try.sh PROCESS.DLL src/process/map.cpp
-
-# Compare with verbose side-by-side assembly diff:
-tools/msvc/try.sh PROCESS.DLL src/process/map.cpp -v -f Map::AddTrapType
-
-# Full module check:
-python3 tools/msvc/build.py PROCESS
-```
+The Windows path of these tools (`tools/msvc/msvc.py`) is new and has not been tested on a Windows machine yet. The research scripts are still macOS/Linux only (zsh and Wine): the search and sweep scripts in `tools/msvc/`, the `tools/msvc/c2dbg/` debugger tools and the gameplay test harness `tools/wine/run.sh`.
 
 ---
 
@@ -131,7 +156,7 @@ This matching decompilation was achieved using a hybrid workflow combining indus
 ### 2. Custom Python Automation Toolchain (`tools/`)
 Because 1995 Visual C++ 2.2 (`c2.dll`) code generation is highly sensitive to Pentium U/V-pipeline scheduling, AST shape, and symbol table layout, a specialized suite of Python tools was created:
 - **`tools/match.py`**: Relocation-aware disassembly matching engine that compares compiled COFF objects directly against original PE sections, highlighting instruction, register, and displacement mismatches side by side.
-- **`tools/msvc/try.sh` & `cl.sh`**: Wine-driven compilation harness executing the authentic 1995 Visual C++ 2.2 compiler (`CL.EXE 9.10`) with `/Ox` optimization.
+- **`tools/msvc/msvc.py`, `try.py` & `build.py`**: Compilation harness executing the authentic 1995 Visual C++ 2.2 compiler (`CL.EXE 9.10`) with `/Ox` optimization: directly on Windows, under Wine on macOS and Linux (`try.sh` and `cl.sh` are zsh front ends for them).
 - **`tools/msvc/declsearch.py` & `runperm.py`**: Automated combinatorial search scripts that test local variable declaration order permutations to resolve register allocation tie-breaking in `c2.dll`.
 - **`tools/msvc/padplan.py` & `padsweep.py`**: Symbol-table padding sweep tools (`extern int pad_...;`) that reconstruct unexported symbol table hashes and align internal compiler symbol counters without altering executable code semantics.
 - **`tools/msvc/mapcmp.py`**: Symbol map comparator ensuring that 100% of `.bss` and `.data` global variables land on their exact byte-level addresses in the original binary layout.

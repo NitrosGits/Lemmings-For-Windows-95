@@ -3,10 +3,21 @@
 #   make            build every module that has sources into build/out
 #   make game       build/game: the original game's data with the rebuilt binaries
 #
-# Needs a MinGW-w64 cross compiler for 32-bit Windows (GCC or llvm-mingw's
-# Clang). The byte-matching build with Visual C++ 2.0 is tools/msvc/build.py.
+# Needs a MinGW-w64 compiler for 32-bit Windows (GCC or llvm-mingw's Clang)
+# and Python 3. On macOS/Linux it is the cross compiler i686-w64-mingw32-*;
+# on Windows, run make from an MSYS2 MINGW32 shell (plain gcc, dlltool, ...)
+# or with llvm-mingw on the PATH. CROSS=prefix overrides the tool names.
+# The byte-matching build with Visual C++ 2.2 is tools/msvc/build.py.
 
+ifeq ($(OS),Windows_NT)
+  # MSYS2's native toolchain has no i686-w64-mingw32- names for binutils
+  ifeq ($(shell command -v i686-w64-mingw32-dlltool 2>/dev/null),)
+    CROSS ?=
+  endif
+  PYTHON ?= $(if $(shell command -v python3 2>/dev/null),python3,python)
+endif
 CROSS   ?= i686-w64-mingw32-
+PYTHON  ?= python3
 CC      := $(CROSS)gcc
 CXX     := $(CROSS)g++
 DLLTOOL := $(CROSS)dlltool
@@ -78,7 +89,7 @@ $(OUT)/$(1).DLL: $(call objs,$(1)) $(CRT_OBJ) src/$(call lower,$(1))/$(call lowe
 
 $(LIB)/lib$(call lower,$(1)).a: src/$(call lower,$(1))/$(call lower,$(1)).def tools/impdef.py
 	@mkdir -p $(LIB)
-	python3 tools/impdef.py $$< $(LIB)/$(call lower,$(1)).imp.def
+	$(PYTHON) tools/impdef.py $$< $(LIB)/$(call lower,$(1)).imp.def
 	$(DLLTOOL) -k -d $(LIB)/$(call lower,$(1)).imp.def -l $$@
 endef
 $(foreach d,$(DLLS),$(eval $(call DLL_RULE,$(d))))
@@ -90,12 +101,14 @@ $(OUT)/LEMMINGS.EXE: $(call objs,LEMMINGS) $(EXE_CRT) $(foreach d,$(LEMMINGS_DEP
 	$(CXX) $(LDFLAGS) -Wl,-e,_WinMainCRTStartup -o $@ $(filter %.o,$^) \
 		$(foreach d,$(LEMMINGS_DEPS),-l$(call lower,$(d))) $(WINLIBS)
 
-ORIG := orig/WINLEMM
+ORIG ?= orig/WINLEMM
+GAME ?= build/game
 
+# the original's files (without MANUALS), then the rebuilt binaries over them
 game: all
-	@mkdir -p build/game
-	rsync -a --exclude MANUALS $(ORIG)/ build/game/
-	cp $(OUT)/* build/game/
+	@mkdir -p $(GAME)
+	for f in $(ORIG)/*; do case "$$f" in */MANUALS) ;; *) cp -Rp "$$f" $(GAME)/ ;; esac; done
+	cp $(OUT)/* $(GAME)/
 
 clean:
 	rm -rf $(OUT) $(OBJ) $(LIB)

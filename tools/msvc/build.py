@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The matching build: every module compiled and linked with Visual C++ 2.0
+"""The matching build: every module compiled and linked with Visual C++ 2.2
 the way the original was, then compared with the original byte for byte.
 
   build.py [MODULE ...]     default: every module with sources; MODULE is e.g. VSMEM
@@ -16,9 +16,9 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from pe import PE  # noqa: E402
+import msvc  # noqa: E402  (runs the compiler: directly on Windows, under Wine elsewhere)
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-CL = os.path.join(ROOT, 'tools', 'msvc', 'cl.sh')
 OUT = os.path.join(ROOT, 'build', 'msvc')
 SYSLIBS = os.path.join(OUT, 'lib')
 CFLAGS = ['/nologo', '/c', '/Ox'] + os.environ.get('CFLAGS_EXTRA', '').split()  # CFLAGS_EXTRA: flag sweeps
@@ -56,10 +56,10 @@ for _k, _v in MODULES.items():
 
 
 def run(args, cwd, tool='CL.EXE'):
-    r = subprocess.run([CL] + args, cwd=cwd, env=dict(os.environ, TOOL=tool), capture_output=True, text=True)
-    out = '\n'.join(l for l in r.stdout.replace('\r', '').splitlines()
-                    if l.strip() and not re.match(r'^Z:.*\.(c|cpp)$', l, re.I) and 'Creating library' not in l)
-    return r.returncode, out
+    rc, text = msvc.run(args, cwd, tool)
+    out = '\n'.join(l for l in text.splitlines()
+                    if l.strip() and not re.match(r'^[A-Z]:.*\.(c|cpp)$', l, re.I) and 'Creating library' not in l)
+    return rc, out
 
 
 def stub(mod):
