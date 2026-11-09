@@ -306,14 +306,22 @@ static Wnd *g_stop;
 static int g_sx, g_sy;
 static char g_keyName[64];
 
+/* the window may be gone by the button-up or key-up (Return closed the dialog) */
+static int stop_alive(void)
+{
+    return g_stop && !g_stop->destroyed && g_stop->plat;
+}
+
 static void push_mouse(int type, int clicks)
 {
-    plat_inject_mouse(g_stop->plat, g_sx, g_sy, 0, type == HM_DOWN, clicks, type == HM_MOVE);
+    if (stop_alive())
+        plat_inject_mouse(g_stop->plat, g_sx, g_sy, 0, type == HM_DOWN, clicks, type == HM_MOVE);
 }
 
 static void push_key(int down)
 {
-    plat_inject_key(g_stop->plat, g_keyName, down);
+    if (stop_alive())
+        plat_inject_key(g_stop->plat, g_keyName, down);
 }
 
 static void sclick_up(void)

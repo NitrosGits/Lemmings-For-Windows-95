@@ -1,0 +1,2 @@
+  ctl StatBar 0 ''
+"LastUser"="Testerx"

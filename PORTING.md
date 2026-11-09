@@ -434,10 +434,15 @@ the original game made by `tools/wine/run.sh`:
 | `opts` | Options, `sclick` on Music On and Low Resolution | the controls' states (`ctls`) as `tools/port/expect/opts.txt` |
 | `user` | Select Player, `sclick` in the name field, `skey x`, `skey y`, `sclick` on the list's row | as `expect/user.txt` (name "Testerxy", then "Tester" from the list) |
 | `level` | Choose Level, `sdbl` on two tree rows (open Original Levels, then Fun), `sclick` on a level | as `expect/level.txt` (8 rows, the level's details shown) |
-| `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list), exit code 0, no crash report |
+| `ukey` | Select Player, `skey x` in the name field, `skey Return` | the dialog closes (OK, once), the new player "Testerx" is saved |
+| `okey`, `oret` | Options, `sclick` on Music On, then `skey Escape` / `skey Return` | the dialog closes; Music stays on (Cancel) / goes off (OK) |
+| `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list, menus swapped in the menu bar), exit code 0, no crash report |
 
-`tools/port/checks.sh [NAME...]` runs them all (except `again`) and prints one
-line each; `EXE=` picks the binary (for instance the app bundle's). The
+`tools/port/checks.sh [NAME...]` runs them all (about six minutes) and prints
+one line each. The runs with system events need the game to stay the active
+application: using the Mac meanwhile can take the keyboard and the first
+click away from a dialog (once, `level` lost its last click that way; ten
+reruns passed); `EXE=` picks the binary (for instance the app bundle's). The
 `expect/` files were made with the layer's drawn controls
 (`LEMMINGS_NATIVE_CONTROLS=-` still gives those), so the dialog checks compare
 the native controls with them.
@@ -467,7 +472,12 @@ window's frame and caption are the system's (so the game's window is its
 client size); the menus are in the macOS menu bar, with About and Quit also in
 the application menu; dialog controls are AppKit's (Aqua look, the system
 font, the mini size where a Windows label is too wide for the small one); the
-dock drag outline is not drawn; Help opens the English PDF manual. The zoom
+game view's scroll bars are still the layer's drawn ones; the dock drag outline
+is not drawn; Help opens the English PDF manual. A logout or restart while the
+game runs reports that Lemmings cancelled it (the game quits meanwhile; a
+second try goes through): Quit is answered "cancel" and passed to the game as
+`WM_CLOSE`, because AppKit waits in a modal loop of its own for a later
+answer, and the game would wait with it. The zoom
 shortcuts in the accelerator table (Alt+F1/F2/F3, commands 0x16f/0x171/0x173)
 do nothing, as in the original, which has no handler for them: zoom is set in
 the Options dialog.

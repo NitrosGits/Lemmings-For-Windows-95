@@ -343,6 +343,10 @@ static PortWindowDelegate *g_delegate;
 static PortAppDelegate *g_appDelegate;
 
 @implementation PortAppDelegate
+/* Quit: the game decides (WM_CLOSE to its main window) and exits by itself.
+   Not NSTerminateLater: terminate: would then run a modal loop of its own
+   until the answer, and the game would wait in it. So a logout or restart
+   reports that Lemmings cancelled it, while the game quits. */
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)a
 {
     input_quit();
