@@ -15,9 +15,9 @@ level 1, the end screen, music (Core Audio) and sound effects. Checked against
 the original game's reference logs (`tools/port/run.sh`, section 8): level 1,
 the digger replay and a nuke to the end of the level all MATCH. Visual C++ 2.2
 still matches all 696 functions with the port's source changes, and the MinGW
-build is unchanged. Not yet tried by hand on a real screen with a real mouse
-(the harness drives the game through window messages), nor on `linux-64` and
-`windows-64`.
+build is unchanged. The input path was exercised with real SDL mouse and key
+events (section 8), but nobody has played it by hand yet; floating
+(undocked) tool windows are untried, and so are `linux-64` and `windows-64`.
 
 ---
 
@@ -332,6 +332,10 @@ against a build of `main` (identical apart from timestamps), and a clean
 - **Unaligned reads.** Sprite offsets are read as `DWORD` at 2-byte-aligned
   addresses; arm64 and x86-64 allow that, but it is undefined in C. The build
   uses `-fno-strict-aliasing`; checked with UBSan once.
+- **macOS habits in the shared layer.** The data-folder search in `core.c`
+  also looks at `../Resources/WINLEMM` (an app bundle; harmless elsewhere),
+  and the desktop's height leaves 28 pixels for a system caption (the macOS
+  value). To revisit on `linux-64` and `windows-64`.
 - **Windows-64 later.** On Windows the layer's `windows.h` replaces the SDK's for
   the game's files; the layer's own files must not mix the two. To check when
   merging into `windows-64`.
@@ -350,6 +354,15 @@ the original game made by `tools/wine/run.sh`:
 | `l1` | play level 1, 300 updates | MATCH `hd-base-l1` (301 updates) |
 | `dig` | `waitupd 200;click 332 395;waitupd 228;click 596 138` (digger) | MATCH `hd-base-dig` (403 updates) |
 | `nuke` | `waitupd 100;click 552 395;waitupd 110;click 552 395;waitupd 120;dbl 552 395` | MATCH `s43-nuke-orig2` (264 updates, to the end of the level); the end screen follows, no crash |
+| `sdig` | the `dig` run with `sclick` (real SDL mouse events through hit testing, capture and the docked panel) | MATCH `hd-base-dig` |
+| `skey` | `dig` with the digger chosen by the key `8` (`skey 8`: SDL key event, `TranslateMessage`, accelerator table) | MATCH `hd-base-dig` |
+| `smenu` | title screen, `sclickw` on File, then on Exit (the menu bar and its modal loop) | the game ends, exit code 0 |
+| `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list), exit code 0, no crash report |
+
+`click`/`dbl`/`key` post window messages straight to the window under the
+point, like the Wine harness; `sclick X Y`, `sdbl X Y`, `sclickw X Y` (window
+coordinates, for the menu bar) and `skey NAME` (an SDL scancode name) go
+through SDL's event queue and the layer's input translation instead.
 
 With `START=` it stays on the title screen: the registration, Select Player,
 Choose Level (tree, preview, details), Options and About dialogs were opened

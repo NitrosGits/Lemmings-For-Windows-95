@@ -531,6 +531,19 @@ static void window_event(const SDL_WindowEvent *e)
     case SDL_EVENT_WINDOW_EXPOSED:
         w->dirty = 1;
         break;
+    case SDL_EVENT_WINDOW_SHOWN:
+        {
+            /* the system may have placed it differently from where it was asked to */
+            int x, y, cw, ch;
+
+            if (SDL_GetWindowPosition(w->sdl, &x, &y) && (x != w->rc.left || y != w->rc.top)) {
+                port_trace("window %p shown at %d,%d, not %d,%d", (void *)w->h, x, y, (int)w->rc.left, (int)w->rc.top);
+                wnd_top_moved(w, x, y);
+            }
+            if (SDL_GetWindowSize(w->sdl, &cw, &ch))
+                wnd_top_resized(w, cw, ch);
+        }
+        break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
         if (!g_appActive) {
             Wnd *t;
@@ -576,9 +589,13 @@ static void check_app_active(void)
     }
 }
 
+/* the harness's own SDL input events (sclick, skey): real input otherwise ignored */
+#define INJECTED 0x504f5254u
+
 void msg_handle_event(const SDL_Event *ev)
 {
     Wnd *top;
+    int live = !port_harness || ev->motion.which == INJECTED;
 
     switch (ev->type) {
     case SDL_EVENT_QUIT:
@@ -591,16 +608,17 @@ void msg_handle_event(const SDL_Event *ev)
         break;
     case SDL_EVENT_MOUSE_MOTION:
         top = wnd_from_sdl(ev->motion.windowID);
-        if (top && !port_harness)
+        if (top && live)
             mouse_event(top, (int)ev->motion.x, (int)ev->motion.y, 0, 0, 0, ev->motion.state);
         break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN:
     case SDL_EVENT_MOUSE_BUTTON_UP:
         top = wnd_from_sdl(ev->button.windowID);
-        if (top && !port_harness) {
+        if (top && (!port_harness || ev->button.which == INJECTED)) {
             int d = ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN;
             UINT dn = 0, up = 0;
-            SDL_MouseButtonFlags b = SDL_GetMouseState(NULL, NULL);
+            SDL_MouseButtonFlags b = port_harness ? (d ? SDL_BUTTON_MASK(ev->button.button) : 0)
+                                                  : SDL_GetMouseState(NULL, NULL);
 
             switch (ev->button.button) {
             case SDL_BUTTON_LEFT:
@@ -627,7 +645,7 @@ void msg_handle_event(const SDL_Event *ev)
         break;
     case SDL_EVENT_KEY_DOWN:
     case SDL_EVENT_KEY_UP:
-        if (!port_harness)
+        if (!port_harness || ev->key.which == INJECTED)
             key_event(&ev->key);
         break;
     default:

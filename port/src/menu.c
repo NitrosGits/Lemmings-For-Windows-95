@@ -538,6 +538,8 @@ int menu_track_bar(Wnd *top, int item, int byKey)
         popup_set_sel(top, &p, next_enabled(&p, -1, 1));
     while (!done) {
         msg_present();
+        if (port_harness)
+            harness_poll();
         if (!SDL_WaitEventTimeout(&ev, 50))
             continue;
         switch (ev.type) {

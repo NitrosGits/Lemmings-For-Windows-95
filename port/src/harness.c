@@ -294,6 +294,69 @@ static void click_down(void)
     hold(2, click_up);
 }
 
+/* ---- Real SDL input (sclick, sdbl, sclickw, skey): through the layer's input path ---- */
+
+#define INJECTED 0x504f5254u
+static Wnd *g_stop;
+static int g_sx, g_sy, g_scan;
+
+static void push_mouse(int type, int clicks)
+{
+    SDL_Event e;
+
+    SDL_zero(e);
+    e.type = (Uint32)type;
+    if (type == SDL_EVENT_MOUSE_MOTION) {
+        e.motion.windowID = SDL_GetWindowID(g_stop->sdl);
+        e.motion.which = INJECTED;
+        e.motion.x = (float)g_sx;
+        e.motion.y = (float)g_sy;
+    } else {
+        e.button.windowID = SDL_GetWindowID(g_stop->sdl);
+        e.button.which = INJECTED;
+        e.button.button = SDL_BUTTON_LEFT;
+        e.button.down = type == SDL_EVENT_MOUSE_BUTTON_DOWN;
+        e.button.clicks = (Uint8)clicks;
+        e.button.x = (float)g_sx;
+        e.button.y = (float)g_sy;
+    }
+    SDL_PushEvent(&e);
+}
+
+static void push_key(int down)
+{
+    SDL_Event e;
+
+    SDL_zero(e);
+    e.type = down ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+    e.key.windowID = SDL_GetWindowID(g_stop->sdl);
+    e.key.which = INJECTED;
+    e.key.scancode = (SDL_Scancode)g_scan;
+    e.key.key = SDL_GetKeyFromScancode((SDL_Scancode)g_scan, SDL_KMOD_NONE, true);
+    e.key.down = down;
+    SDL_PushEvent(&e);
+}
+
+static void sclick_up(void)
+{
+    g_vkeys[VK_LBUTTON] = 0;
+    push_mouse(SDL_EVENT_MOUSE_BUTTON_UP, 1);
+    log_line(game_window());
+}
+
+static void sclick_down(void)
+{
+    g_vkeys[VK_LBUTTON] = 1;
+    push_mouse(SDL_EVENT_MOUSE_BUTTON_DOWN, 1);
+    hold(2, sclick_up);
+}
+
+static void skey_up(void)
+{
+    push_key(0);
+    log_line(game_window());
+}
+
 static void key_up(void)
 {
     g_vkeys[g_key] = 0;
@@ -332,7 +395,46 @@ static void run(char *line)
         hold(1, click_down);
         return;
     }
-    if (w && sscanf(line, "dbl %d %d", &x, &y) == 2) {
+    if (w && w->sdl && ((sscanf(line, "sclick %d %d", &x, &y) == 2) || sscanf(line, "sclickw %d %d", &x, &y) == 2)) {
+        RECT r;
+        POINT sp;
+
+        /* sclick: client coordinates, like click; sclickw: the whole window (the menu bar) */
+        wnd_client_fb(w, &r);
+        g_stop = w;
+        g_sx = x + (line[6] == 'w' ? 0 : r.left);
+        g_sy = y + (line[6] == 'w' ? 0 : r.top);
+        sp.x = w->rc.left + g_sx;
+        sp.y = w->rc.top + g_sy;
+        g_vcur = sp;
+        push_mouse(SDL_EVENT_MOUSE_MOTION, 0);
+        port_harness_log("  -> sdl at %d %d (screen %ld %ld)", g_sx, g_sy, (long)sp.x, (long)sp.y);
+        hold(1, sclick_down);
+        return;
+    }
+    if (w && w->sdl && sscanf(line, "sdbl %d %d", &x, &y) == 2) {
+        RECT r;
+
+        wnd_client_fb(w, &r);
+        g_stop = w;
+        g_sx = x + r.left;
+        g_sy = y + r.top;
+        g_vcur.x = w->rc.left + g_sx;
+        g_vcur.y = w->rc.top + g_sy;
+        push_mouse(SDL_EVENT_MOUSE_MOTION, 0);
+        push_mouse(SDL_EVENT_MOUSE_BUTTON_DOWN, 1);
+        push_mouse(SDL_EVENT_MOUSE_BUTTON_UP, 1);
+        push_mouse(SDL_EVENT_MOUSE_BUTTON_DOWN, 2);
+        push_mouse(SDL_EVENT_MOUSE_BUTTON_UP, 2);
+        port_harness_log("  -> sdl dbl at %d %d", g_sx, g_sy);
+    } else if (w && w->sdl && sscanf(line, "skey %63s", a) == 1) {
+        g_stop = w;
+        g_scan = (int)SDL_GetScancodeFromName(a);
+        port_harness_log("  -> sdl key %s (scancode %d)", a, g_scan);
+        push_key(1);
+        hold(2, skey_up);
+        return;
+    } else if (w && sscanf(line, "dbl %d %d", &x, &y) == 2) {
         POINT pt = {x, y};
         HWND t = child_at(w, &pt);
         LPARAM lp = MAKELPARAM(pt.x, pt.y);
