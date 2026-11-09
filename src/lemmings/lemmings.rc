@@ -238,7 +238,12 @@ BEGIN
     115, 275, ASCII, NOINVERT, ALT
 END
 
+#if defined(__GNUC__) && !defined(__clang__)
+/* GNU windres reads DLGINCLUDE as a keyword; quoted, it is the same name there */
+"DLGINCLUDE" RCDATA
+#else
 DLGINCLUDE RCDATA
+#endif
 BEGIN
     "GENERIC.H\0"
 END

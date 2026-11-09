@@ -101,6 +101,8 @@ make -j4
 ```
 On macOS and Linux the Makefile uses the `i686-w64-mingw32-` cross tools. On Windows it picks MSYS2's plain `gcc`/`dlltool` names automatically. Use `make CROSS=<prefix>` for other tool names.
 
+**Prebuilt binaries:** every push to `main` runs the [Windows build workflow](.github/workflows/windows-build.yml) on GitHub Actions. It builds the binaries with llvm-mingw and checks that the native MSYS2 MINGW32 build still works. Download `LEMMINGS.EXE` and the 7 DLLs from the `lemmings-win32` artifact of a run on the repository's **Actions** tab. They still need the original game's data files: copy them over an original installation.
+
 ### 3. Playing the Game
 
 To run the game, the original game files (`.DAT`, `.WAV`, `.MID`, `.LVL`) are required.

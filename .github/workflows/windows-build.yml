@@ -1,0 +1,92 @@
+# Builds the game's Windows binaries (LEMMINGS.EXE and its 7 DLLs) from the
+# decompiled source with the portable Makefile build. The game's data files are
+# not part of the repository: copy the binaries over an original installation
+# (or use `make game` locally) to play.
+#
+#   win32            llvm-mingw on Ubuntu, the toolchain used in development;
+#                    its binaries are the downloadable artifact
+#   msys2-mingw32    the native Windows route from the README (MSYS2 MINGW32,
+#                    GCC), built to keep it working
+#
+# The byte-matching build needs Visual C++ 2.2 and the original game files,
+# neither of which can be in the repository, so it is not run here.
+name: Windows build
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+  pull_request:
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win32:
+    name: Windows binaries (llvm-mingw)
+    runs-on: ubuntu-24.04
+    env:
+      LLVM_MINGW: llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64
+      LLVM_MINGW_SHA256: cee8d2ce3da5145ce4dc882e70d0b0719a783d53a99752c60948fc0659975a65
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install llvm-mingw
+        run: |
+          curl -sSLfo "$RUNNER_TEMP/llvm-mingw.tar.xz" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/$LLVM_MINGW.tar.xz"
+          echo "$LLVM_MINGW_SHA256  $RUNNER_TEMP/llvm-mingw.tar.xz" | sha256sum -c -
+          tar -xf "$RUNNER_TEMP/llvm-mingw.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Check the outputs
+        run: |
+          ls -l build/out
+          for f in LEMMINGS.EXE VSMEM.DLL READDIB.DLL FILEHAND.DLL GAMEOVER.DLL LOADLVL.DLL RENDER.DLL PROCESS.DLL; do
+            test -s "build/out/$f" || { echo "missing build/out/$f"; exit 1; }
+          done
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lemmings-win32
+          path: build/out/
+          if-no-files-found: error
+
+  msys2-mingw32:
+    name: Windows native build (MSYS2 MINGW32)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # keep LF line endings: the Makefile's recipes break with CRLF
+      - name: Configure git
+        shell: pwsh
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@v7
+
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW32
+          update: true
+          install: make python mingw-w64-i686-gcc
+
+      - name: Build
+        run: make -j4
+
+      - name: Check the outputs
+        run: |
+          ls -l build/out
+          for f in LEMMINGS.EXE VSMEM.DLL READDIB.DLL FILEHAND.DLL GAMEOVER.DLL LOADLVL.DLL RENDER.DLL PROCESS.DLL; do
+            test -s "build/out/$f" || { echo "missing build/out/$f"; exit 1; }
+          done
