@@ -1306,6 +1306,11 @@ Wnd *wnd_from_point(Wnd *top, int fx, int fy, int *hit)
                 continue;
             wnd_window_fb(c, &cr);
             if (fx >= cr.left && fx < cr.right && fy >= cr.top && fy < cr.bottom) {
+                /* as Windows: a window that says HTTRANSPARENT (group boxes, static
+                   text) lets the mouse through to the windows under it */
+                if (SendMessageA(c->h, WM_NCHITTEST, 0, MAKELPARAM(top->rc.left + fx, top->rc.top + fy)) ==
+                    HTTRANSPARENT)
+                    continue;
                 w = c;
                 found = 1;
                 break;

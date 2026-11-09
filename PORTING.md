@@ -373,7 +373,9 @@ with notification, stopped and closed.
 Known differences from the original on Windows: the text is the layer's own
 bitmap font; a top-level window's frame and caption are the system's (so the
 game's window is its client size); the dock drag outline is not drawn; Help
-opens the English PDF manual.
+opens the English PDF manual. The zoom shortcuts in the accelerator table (Alt+F1/F2/F3,
+commands 0x16f/0x171/0x173) do nothing, as in the original, which has no
+handler for them: zoom is set in the Options dialog.
 
 ## 9. Decisions
 

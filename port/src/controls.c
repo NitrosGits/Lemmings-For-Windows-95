@@ -496,6 +496,10 @@ static LRESULT CALLBACK ButtonProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
     case WM_ENABLE:
         wnd_invalidate(w, NULL, 1);
         return 0;
+    case WM_NCHITTEST:
+        if (type == BS_GROUPBOX)
+            return HTTRANSPARENT;
+        break;
     case WM_GETDLGCODE:
         if (type == BS_RADIOBUTTON || type == BS_AUTORADIOBUTTON)
             return DLGC_BUTTON | DLGC_RADIOBUTTON;
