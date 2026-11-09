@@ -528,6 +528,14 @@ void input_quit(void)
         msg_post(m->h, WM_CLOSE, 0, 0);
 }
 
+void input_command(int id)
+{
+    Wnd *m = main_window();
+
+    if (m && top_enabled(m))
+        msg_post(m->h, WM_COMMAND, (WPARAM)id, 0);
+}
+
 int msg_pump(int wait)
 {
     return plat_pump(wait);

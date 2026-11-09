@@ -262,6 +262,13 @@ void plat_window_present(PlatWindow *p, const Surface *fb, const Surface *overla
     SDL_RenderPresent(p->ren);
 }
 
+int plat_window_snapshot(PlatWindow *p, const char *path)
+{
+    (void)p;
+    (void)path;
+    return 0;
+}
+
 int plat_window_is_key(PlatWindow *p)
 {
     return SDL_GetKeyboardFocus() == p->win;

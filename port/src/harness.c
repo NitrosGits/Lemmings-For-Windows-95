@@ -432,6 +432,13 @@ static void run(char *line)
         return;
     } else if (w && sscanf(line, "shot %199s", a) == 1)
         shot(w, a);
+    else if (w && w->plat && sscanf(line, "wshot %190s", a) == 1) {
+        char fn[1300];
+
+        /* the window as the system shows it, native controls included */
+        snprintf(fn, sizeof fn, "%s/%s.png", g_dir, a);
+        port_harness_log("  wshot %s: %s", fn, plat_window_snapshot(w->plat, fn) ? "written" : "not supported");
+    }
     else if (sscanf(line, "cmd %d", &x) == 1) {
         Wnd *f = largest();
 

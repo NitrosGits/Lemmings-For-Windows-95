@@ -1,12 +1,13 @@
-# The native 64-bit build of Lemmings for Windows 95 on SDL3 (PORTING.md).
+# The native 64-bit build of Lemmings for Windows 95 (PORTING.md).
 #
 #   cmake -S . -B build/native -G Ninja
 #   cmake --build build/native
 #   build/native/lemmings --data orig/WINLEMM
 #
 # The 7 DLLs become static libraries linked into one executable with the
-# SDL3 platform layer (port/). The 32-bit builds (Makefile, tools/msvc) are
-# separate and unchanged. Platform-specific pieces live in port/<platform>/.
+# Win32 layer (port/src) and the platform's backend: AppKit and Core Audio on
+# macOS (port/macos), SDL3 elsewhere for now. The 32-bit builds (Makefile,
+# tools/msvc) are separate and unchanged.
 
 cmake_minimum_required(VERSION 3.21)
 project(Lemmings VERSION 1.0 LANGUAGES C CXX)
@@ -15,7 +16,16 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
 
-find_package(SDL3 3.2 REQUIRED CONFIG)
+if(APPLE)
+  set(LEMMINGS_BACKEND cocoa CACHE STRING "The platform backend: cocoa or sdl")
+else()
+  set(LEMMINGS_BACKEND sdl CACHE STRING "The platform backend: cocoa or sdl")
+endif()
+if(LEMMINGS_BACKEND STREQUAL "cocoa")
+  enable_language(OBJC)
+else()
+  find_package(SDL3 3.2 REQUIRED CONFIG)
+endif()
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # ---- The resources: lemmings.rc as C tables ----
@@ -28,20 +38,23 @@ add_custom_command(
   DEPENDS ${CMAKE_SOURCE_DIR}/tools/port/rc2c.py ${CMAKE_SOURCE_DIR}/src/lemmings/lemmings.rc ${RES_FILES}
   COMMENT "Converting lemmings.rc")
 
-# ---- The SDL3 platform layer ----
+# ---- The Win32 layer ----
 add_library(winsdl OBJECT
   port/src/core.c port/src/file.c port/src/reg.c port/src/gdi.c port/src/font.c
   port/src/wnd.c port/src/msg.c port/src/res.c port/src/menu.c port/src/dlg.c
   port/src/controls.c port/src/wave.c port/src/mci.c port/src/harness.c
-  port/src/plat_sdl.c ${RES_C})
+  ${RES_C})
 set_target_properties(winsdl PROPERTIES C_STANDARD 11 C_STANDARD_REQUIRED ON C_EXTENSIONS ON)
 target_include_directories(winsdl PUBLIC port/include PRIVATE port/src)
-target_link_libraries(winsdl PUBLIC SDL3::SDL3)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(winsdl PRIVATE -Wall -Wno-unused-function -Wno-unused-parameter)
 endif()
+if(NOT LEMMINGS_BACKEND STREQUAL "cocoa")
+  target_sources(winsdl PRIVATE port/src/plat_sdl.c)
+  target_link_libraries(winsdl PUBLIC SDL3::SDL3)
+endif()
 
-# The MIDI synthesizer: the platform's own (PORTING.md, section 3)
+# The backend, sound and MIDI synthesizer: the platform's own (PORTING.md, section 3)
 if(APPLE)
   include(port/macos/macos.cmake)
 else()

@@ -53,6 +53,8 @@ void plat_window_set_minmax(PlatWindow *p, int minw, int minh, int maxw, int max
 /* shows the framebuffer, and over it the overlay (an open menu) at ox, oy */
 void plat_window_present(PlatWindow *p, const struct Surface *fb, const struct Surface *overlay, int ox, int oy);
 int plat_window_is_key(PlatWindow *p);
+/* what the window shows (its framebuffer and any native controls) as a PNG */
+int plat_window_snapshot(PlatWindow *p, const char *path);
 int plat_app_active(void);
 
 /* ---- Events and input state ---- */
@@ -99,5 +101,6 @@ void input_window_close(struct Wnd *w);
 void input_window_exposed(struct Wnd *w);
 void input_app_deactivated(void);
 void input_quit(void);
+void input_command(int id);                 /* a menu command to the main window */
 
 #endif
