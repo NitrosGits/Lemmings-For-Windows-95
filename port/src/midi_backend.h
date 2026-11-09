@@ -19,5 +19,7 @@ void midi_backend_stop(void *m);
 uint32_t midi_backend_position(void *m);            /* milliseconds */
 uint32_t midi_backend_length(void *m);
 int midi_backend_playing(void *m);                  /* 0 once stopped or at the end */
+/* the harness: seconds of synthesizer output so far, seconds with sound, the peak (0..1) */
+void midi_backend_level(double *rendered, double *heard, float *peak);
 
 #endif

@@ -16,6 +16,7 @@
  * real input is ignored and message boxes answer themselves.
  */
 #include "port_internal.h"
+#include "midi_backend.h"
 
 int port_harness;
 
@@ -445,7 +446,16 @@ static void run(char *line)
         return;
     } else if (w && sscanf(line, "shot %199s", a) == 1)
         shot(w, a);
-    else if (sscanf(line, "smenu %199[^\n]", a) == 1)
+    else if (!strncmp(line, "levels", 6)) {
+        double fr, fh, mr, mh;
+        float fp, mp;
+
+        /* what reached the sound output so far (sound effects; music) */
+        plat_audio_level(&fr, &fh, &fp);
+        midi_backend_level(&mr, &mh, &mp);
+        port_harness_log("  levels: effects %.1f s out, %.1f s with sound, peak %.2f; music %.1f s out, "
+                         "%.1f s with sound, peak %.2f", fr, fh, fp, mr, mh, mp);
+    } else if (sscanf(line, "smenu %199[^\n]", a) == 1)
         /* the system's menu bar: "File/Exit", "App/Quit Lemmings" */
         port_harness_log("  smenu %s: %s", a, plat_menu_choose(a) ? "chosen" : "not found or disabled");
     else if (w && w->plat && sscanf(line, "wshot %190s", a) == 1) {

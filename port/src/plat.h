@@ -112,6 +112,8 @@ int plat_stream_queued(PlatStream *s);      /* bytes not played yet: 0 once all 
 void plat_stream_clear(PlatStream *s);
 void plat_stream_gain(PlatStream *s, float gain);
 void plat_stream_destroy(PlatStream *s);
+/* the harness: seconds of output so far, seconds with sound in them, the peak (0..1) */
+void plat_audio_level(double *rendered, double *heard, float *peak);
 
 /* ---- What backends call (msg.c) ---- */
 void input_mouse(struct Wnd *top, int fx, int fy, int button, int down, int clicks, int injected);

@@ -8,7 +8,9 @@
 # and `again` (three levels, two replays from the end screen) check the exit
 # code, the zoom run the zoomed frame's height; dialog runs compare the
 # controls' states (and for the key runs the setting saved) with
-# tools/port/expect/NAME.txt.
+# tools/port/expect/NAME.txt. `sound` (not in the default list: it plays out
+# loud) runs the nuke with sound and music on and measures what reached the
+# output (the harness's `levels`).
 ROOT=${0:A:h:h:h}
 RUN=$ROOT/tools/port/run.sh
 BASE=${BASE:-$ROOT/build/runs}
@@ -56,6 +58,16 @@ for n in $names; do
   zoomclk)
     r=$(TIMEOUT=60 $RUN zoomclk 0 'waitupd 20;menu Set Options;wait 1500;sclick 251 104;wait 800;ctl OK;wait 3000;shot z1;menu Exit;wait 2000' | tail -1)
     r="$r, $(sips -g pixelHeight $ROOT/build/runs-native/zoomclk.run/z1.BMP 2>/dev/null | grep -o 'pixelHeight.*')"
+    ;;
+  sound)
+    r=$(SOUND=1 TIMEOUT=90 $RUN sound 264 "waitupd 50;levels;${NUKE};waitupd 200;levels" $BASE/s43-nuke-orig2.txt)
+    lv=$(grep 'levels:' $ROOT/build/runs-native/sound.cmd | tail -1)
+    fx=$(print -r -- "$lv" | sed -E 's/.*effects [0-9.]+ s out, ([0-9.]+) s with sound.*/\1/')
+    mo=$(print -r -- "$lv" | sed -E 's/.*music ([0-9.]+) s out.*/\1/')
+    mh=$(print -r -- "$lv" | sed -E 's/.*music [0-9.]+ s out, ([0-9.]+) s with sound.*/\1/')
+    # the four effects hold about 1.4 s of sound; the music plays without a gap
+    if (( fx >= 1.2 && mh >= 10 && mh >= mo * 0.95 )); then v=heard; else v="NOT HEARD"; fi
+    r="$(result "$r"), sound $v: effects ${fx} s, music ${mh} of ${mo} s"
     ;;
   again)
     crashes=$(ls ~/Library/Logs/DiagnosticReports 2>/dev/null | grep -ci lemmings)

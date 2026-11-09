@@ -5,6 +5,7 @@
  * output). See port/src/midi_backend.h.
  */
 #include <AudioToolbox/AudioToolbox.h>
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -16,6 +17,78 @@ typedef struct Tune {
     MusicTimeStamp lengthBeats;
     int playing;
 } Tune;
+
+/* what the synthesizer sent to the output (the harness's "levels"), from a
+   render notification on the graph's output unit: render thread only */
+static volatile double g_rendered, g_heard;
+static volatile float g_peak;
+
+static OSStatus metered(void *ref, AudioUnitRenderActionFlags *flags, const AudioTimeStamp *ts, UInt32 bus,
+                        UInt32 frames, AudioBufferList *data)
+{
+    double rate = *(double *)ref;
+    UInt32 i, b;
+
+    (void)ts;
+    (void)bus;
+    if (!(*flags & kAudioUnitRenderAction_PostRender) || !data)
+        return noErr;
+    for (i = 0; i < frames; i++) {
+        float m = 0;
+
+        for (b = 0; b < data->mNumberBuffers; b++) {
+            const float *x = data->mBuffers[b].mData;
+            UInt32 ch = data->mBuffers[b].mNumberChannels, n = data->mBuffers[b].mDataByteSize / sizeof(float);
+            UInt32 c;
+
+            for (c = 0; c < ch && i * ch + c < n; c++)
+                if (fabsf(x[i * ch + c]) > m)
+                    m = fabsf(x[i * ch + c]);
+        }
+        if (m > 0.001f)
+            g_heard += 1.0 / rate;
+        if (m > g_peak)
+            g_peak = m;
+    }
+    g_rendered += frames / rate;
+    return noErr;
+}
+
+void midi_backend_level(double *rendered, double *heard, float *peak)
+{
+    *rendered = g_rendered;
+    *heard = g_heard;
+    *peak = g_peak;
+}
+
+/* meters the graph's output unit, if it renders 32-bit floats */
+static void meter(Tune *t)
+{
+    static double rate;
+    AUGraph graph;
+    UInt32 n = 0, i;
+
+    if (MusicSequenceGetAUGraph(t->seq, &graph) != noErr || AUGraphGetNodeCount(graph, &n) != noErr)
+        return;
+    for (i = 0; i < n; i++) {
+        AUNode node;
+        AudioComponentDescription d;
+        AudioUnit unit;
+        AudioStreamBasicDescription f;
+        UInt32 size = sizeof f;
+
+        if (AUGraphGetIndNode(graph, i, &node) != noErr || AUGraphNodeInfo(graph, node, &d, &unit) != noErr ||
+            d.componentType != kAudioUnitType_Output)
+            continue;
+        if (AudioUnitGetProperty(unit, kAudioUnitProperty_StreamFormat, kAudioUnitScope_Input, 0, &f, &size) !=
+                noErr ||
+            f.mFormatID != kAudioFormatLinearPCM || !(f.mFormatFlags & kAudioFormatFlagIsFloat) ||
+            f.mBitsPerChannel != 32 || f.mSampleRate <= 0)
+            continue;
+        rate = f.mSampleRate;
+        AudioUnitAddRenderNotify(unit, metered, &rate);
+    }
+}
 
 int midi_backend_available(void)
 {
@@ -63,6 +136,7 @@ void *midi_backend_open(const char *path)
         return NULL;
     }
     MusicPlayerPreroll(t->player);
+    meter(t);
     return t;
 }
 

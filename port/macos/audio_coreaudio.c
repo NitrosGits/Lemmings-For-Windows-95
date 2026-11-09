@@ -6,6 +6,7 @@
  * ended (waveOut's WOM_DONE depends on that).
  */
 #include <AudioToolbox/AudioToolbox.h>
+#include <math.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,6 +28,12 @@ struct PlatStream {
 static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 static AudioUnit g_unit;
 static PlatStream *g_streams;
+
+/* what went to the output (the harness's "levels"): frames rendered, frames
+   with a sample above -60 dB, and the loudest sample; written by the render
+   thread only */
+static volatile uint64_t g_rendered, g_heard;
+static volatile float g_peak;
 
 static float sample(const PlatStream *s, size_t frame, int ch)
 {
@@ -89,9 +96,31 @@ static OSStatus render(void *ref, AudioUnitRenderActionFlags *flags, const Audio
         if (s->len > s->start)
             mix(s, out, frames);
     pthread_mutex_unlock(&g_lock);
-    for (UInt32 i = 0; i < frames * 2; i++)
-        out[i] = out[i] > 1.0f ? 1.0f : out[i] < -1.0f ? -1.0f : out[i];
+    for (UInt32 i = 0; i < frames; i++) {
+        float m = 0;
+        int ch;
+
+        for (ch = 0; ch < 2; ch++) {
+            float *x = &out[i * 2 + ch];
+
+            *x = *x > 1.0f ? 1.0f : *x < -1.0f ? -1.0f : *x;
+            if (fabsf(*x) > m)
+                m = fabsf(*x);
+        }
+        if (m > 0.001f)
+            g_heard++;
+        if (m > g_peak)
+            g_peak = m;
+    }
+    g_rendered += frames;
     return noErr;
+}
+
+void plat_audio_level(double *rendered, double *heard, float *peak)
+{
+    *rendered = g_rendered / OUT_RATE;
+    *heard = g_heard / OUT_RATE;
+    *peak = g_peak;
 }
 
 int plat_audio_open(void)

@@ -436,6 +436,7 @@ the original game made by `tools/wine/run.sh`:
 | `level` | Choose Level, `sdbl` on two tree rows (open Original Levels, then Fun), `sclick` on a level | as `expect/level.txt` (8 rows, the level's details shown) |
 | `ukey` | Select Player, `skey x` in the name field, `skey Return` | the dialog closes (OK, once), the new player "Testerx" is saved |
 | `okey`, `oret` | Options, `sclick` on Music On, then `skey Escape` / `skey Return` | the dialog closes; Music stays on (Cancel) / goes off (OK) |
+| `sound` (only when named: it plays out loud) | the nuke with sound and music on (`SOUND=1`), `levels` after it | MATCH; the four effects put 1.4 s of sound out, the music plays without a gap (16.1 of 16.2 s) |
 | `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list, menus swapped in the menu bar), exit code 0, no crash report |
 
 `tools/port/checks.sh [NAME...]` runs them all (about six minutes) and prints
@@ -455,7 +456,10 @@ Tab, Space, Backspace, the arrows, F1-F3, F10) are posted to AppKit as
 input translation; `smenu MENU/ITEM` chooses through the menu bar (`smenu ?`
 lists it). `ctls` logs the dialog's controls (class, id, text, state), `shot
 NAME` saves the framebuffer as a BMP, `wshot NAME` the window as AppKit shows
-it, native controls included, as a PNG. A click on a native control posts its
+it, native controls included, as a PNG; `levels` how many seconds the sound
+output and the music synthesizer have played so far, how many of them had
+sound above -60 dB, and their peaks (meters in `audio_coreaudio.c` and a
+render notification on the synthesizer's output unit). A click on a native control posts its
 button-up with the button-down: the control tracks the mouse in a loop of its
 own until the button comes up, and the harness can't run meanwhile.
 
@@ -464,7 +468,12 @@ Choose Level (tree, preview, details), Options and About dialogs were opened
 and photographed that way. With sound and music on (`SOUND=1`) the level-1 log
 still matches, the MCI trace shows the tune opened, played with notification,
 stopped and closed, and the nuke run plays its four sound effects (each one
-ends, so the next one starts).
+ends, so the next one starts). Measured at the output (2026-11-10, AppKit):
+the first effect, 0.895 s at 7092 Hz, gives 0.9 s of sound (the right speed);
+the music keeps playing through the Options dialog; switching Music and Sound
+Effects off there stops the tune (MCI stop, the synthesizer goes quiet) and
+the nuke clicks play nothing; switching them on again restarts the tune from
+its beginning and the effects play again.
 
 Known differences from the original on Windows: the text drawn by the layer
 (the game's own windows, static text) is its own bitmap font; a top-level

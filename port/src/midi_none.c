@@ -53,3 +53,9 @@ int midi_backend_playing(void *m)
     (void)m;
     return 0;
 }
+
+void midi_backend_level(double *rendered, double *heard, float *peak)
+{
+    *rendered = *heard = 0;
+    *peak = 0;
+}
