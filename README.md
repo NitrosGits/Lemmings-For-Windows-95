@@ -10,7 +10,7 @@ The project achieves **dual-target compatibility**:
 
 ## Progress & Status
 
-Across the entire game (1 executable + 7 DLLs), **688 out of 696 functions (98.85%)** are 100% byte-matched:
+Across the entire game (1 executable + 7 DLLs), **690 out of 696 functions (99.14%)** are 100% byte-matched:
 
 | Module | Purpose | Functions Matched | Status |
 |---|---|---|---|
@@ -20,9 +20,9 @@ Across the entire game (1 executable + 7 DLLs), **688 out of 696 functions (98.8
 | **`LOADLVL.DLL`** | Level file format parser and terrain unpacker | **41 / 41 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`READDIB.DLL`** | DIB / BMP bitmap loading and palette parsing | **17 / 17 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`VSMEM.DLL`** | Custom sub-allocator and memory manager | **11 / 11 (100.0%)** | **100% BYTE-IDENTICAL** |
-| **`RENDER.DLL`** | High-performance 2D blitter and dirty-rect engine | **75 / 77 (97.40%)** | 2 near-matches |
+| **`RENDER.DLL`** | High-performance 2D blitter and dirty-rect engine | **77 / 77 (100.0%)** | **100% BYTE-IDENTICAL** |
 | **`PROCESS.DLL`** | Lemming physics, state machine, skill actions, terrain collision | **201 / 206 (97.57%)** | 5 near-matches |
-| **Total** | | **688 / 696 (98.85%)** | **5 / 8 Modules 100% Matched** |
+| **Total** | | **690 / 696 (99.14%)** | **6 / 8 Modules 100% Matched** |
 
 ---
 
@@ -57,10 +57,11 @@ Across the entire game (1 executable + 7 DLLs), **688 out of 696 functions (98.8
 │   └── WINLEMM/       # Original binary files (not tracked; user provided)
 ├── tools/
 │   ├── match.py       # Instruction and relocation comparison engine
-│   ├── msvc/          # Scripts for MSVC 2.2 compilation & padding sweeps
+│   ├── msvc/          # Scripts for MSVC 2.2 compilation, padding sweeps & c2dbg tracers
 │   └── impdef.py      # Import library generation helper
 ├── docs/
-│   └── DECOMP.md      # Detailed reverse-engineering methodology & compiler notes
+│   ├── DECOMP.md      # Detailed reverse-engineering methodology & compiler notes
+│   └── C2_REGALLOC.md # Annotated map of C2.EXE graph-colouring register allocator
 ├── Makefile           # Portable MinGW build system
 └── HANDOFF.md         # Detailed decompilation ledger & session logs
 ```
@@ -132,6 +133,7 @@ Because 1995 Visual C++ 2.2 (`c2.dll`) code generation is highly sensitive to Pe
 - **`tools/msvc/declsearch.py` & `runperm.py`**: Automated combinatorial search scripts that test local variable declaration order permutations to resolve register allocation tie-breaking in `c2.dll`.
 - **`tools/msvc/padplan.py` & `padsweep.py`**: Symbol-table padding sweep tools (`extern int pad_...;`) that reconstruct unexported symbol table hashes and align internal compiler symbol counters without altering executable code semantics.
 - **`tools/msvc/mapcmp.py`**: Symbol map comparator ensuring that 100% of `.bss` and `.data` global variables land on their exact byte-level addresses in the original binary layout.
+- **`tools/msvc/c2dbg/` (`colour_trace_fn.py`, `neigh_trace_fn.py`, `simplify_model.py`)**: Winedbg debugger harness and exact Python Chaitin-Briggs graph-colouring simulator for `C2.EXE` (`sub_417690` / `sub_417580`).
 - **`tools/dis.py` & `cstr.py`**: Automated tools for dumping annotated target assembly and extracting null-terminated string literals.
 
 ### 3. AI Assistance & Autonomous Agents

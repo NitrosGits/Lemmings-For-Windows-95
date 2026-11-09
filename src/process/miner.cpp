@@ -37,7 +37,8 @@ void Miner::Process(LEMMING *l, DLENTRY **list)
             x += l->dir;
             y++;
         }
-        g_map->EraseSprite(list, g_sprites, SPR_MINEHOLE + n + (l->dir == -1 ? 2 : 0), x, y + 1);
+        n += l->dir == -1 ? 2 : 0;
+        g_map->EraseSprite(list, g_sprites, n + SPR_MINEHOLE, x, y + 1);
         break;
     case 3:
         l->y++;
@@ -55,9 +56,13 @@ void Miner::Process(LEMMING *l, DLENTRY **list)
             Leave(l);
             g_walker.Enter(l);
         }
-        break;
+        /* falls into the odd frames, which do nothing */
     case 5: case 7: case 9: case 11: case 13:
     case 17: case 19: case 21: case 23:
+        /* A statement here (removed later as a dead store) keeps VC++ 2.2 from dropping these
+           labels from the jump table (its pruner drops break-only cases, skipping every second one);
+           falling through from case 15 lets the empty block share the exit, as in the original. */
+        x = 0;
         break;
     }
 }

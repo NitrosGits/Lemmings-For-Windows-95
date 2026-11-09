@@ -2763,3 +2763,100 @@ Per file: PROCESS basher.cpp 6/7, builder.cpp 5/6, miner.cpp 6/7, map.cpp 21/23;
 - **Why it works (details above and docs/C2_REGALLOC.md UPDATE 4):** the single-use parameter `changed` got its own register node, coloured early (low degree) and blocked eax/ecx for cy0. Without that node c2 colours the product eax, cy0 ecx, cy1 edx like the original.
 - **Lesson for the remaining misses (OpenLevelItem 2, Builder::Process 3, AddTrapType 6, AddObjectType 8, Miner 25, Basher 27):** trace the target function with `neigh_trace_fn.py`, load it into `simplify_model.py`, find which graph change gives the original's colours, then look for the source form that makes it (here: which values exist as separate nodes). Numbering sweeps only break ties and only help once the graph is right.
 - Not committed yet.
+
+### Antigravity Session 58 (2026-11-09): OpenLevelItem Interference Graph, `0x476430` Bucket Table, & Simulator Setup for Takeover
+- **Standalone Fast Testbed & Interference Trace**:
+  - `build/scratch/s58_antigravity/test_vol_pos_union.cpp`: Standalone 232-line file that compiles in ~0.3s under VC++ 2.2 (`tools/msvc/try.sh LEMMINGS.EXE build/scratch/s58_antigravity/test_vol_pos_union.cpp -f OpenLevelItem`).
+  - Uses clean C without pointer aliases or `switch (value)`: `volatile WORD pos = sel;` and `union { int d; WORD w; } added; ... g_db->entries[i].shown = added.w;`.
+  - Produces exact 784-byte function size, matching `0x40b3e0..0x40b688` (680 bytes) 100% and `0x40b6a2..0x40b6e0` (62 bytes, including `mov edx, [esp+0x34]; push edx` for `TreeEnsureVisible`) 100%. Only the 4 instructions / 5 bytes at the store `0x40b689..0x40b6a1` differ (`dx, ecx, eax` vs Target `ax, edx, ecx`).
+  - `build/scratch/s58_antigravity/oli_nb.txt`: Complete `neigh_trace_fn.py` interference dump for `OpenLevelItem` (driver call 6 in `test_vol_pos_union.cpp`), ready to pass directly to `python3 tools/msvc/c2dbg/simplify_model.py build/scratch/s58_antigravity/oli_nb.txt`.
+- **Exact Interference Graph & Store Node Analysis**:
+  - In `oli_nb.txt`, `OpenLevelItem` has 40 interference nodes (24 `0x4xxx` nodes and 16 `0x8xxx` nodes) and 288 edges.
+  - The store nodes and their exact properties in `test_vol_pos_union.cpp` are:
+    - `0x4029`: `offset` (`[esp+0x1c]`, reload at store), degree 10, cost 50 -> coloured `eax` (pop #5).
+    - `0x402b`: `base` (`g_db`, `ds:0x41cad4`), degree 11, cost 75 -> coloured `ecx` (pop #6).
+    - `0x4035`: `val` (`[esp+0x14]`, `added.w`), degree 11, cost 70 -> coloured `edx` (pop #12).
+    - `0x4031`: `offset` in prologue (cost 85, degree 10, coloured `eax`).
+  - **Why `offset` (`0x4029`) has degree 10 while `base` (`0x402b`) and `val` (`0x4035`) have degree 11**:
+    - `0x4029` and `0x4031` are the two live ranges of `i * 137` (`[esp+0x1c]`): `0x4031` in the prologue and `0x4029` at the store. They do not interfere with each other, and both have the exact same 10 neighbours (`{4020, 4021, 4024, 402a, 402b, 402e, 402f, 4032, 4035, 4038}`).
+    - `0x402b` (`g_db`) and `0x4035` (`val`) interfere with **both** `0x4031` and `0x4029` (the 9 common neighbours + `0x4029` + `0x4031` = degree 11).
+  - **Why shifting `0x4xxx` IDs by $\Delta \in \{11, 12, 13, 14\} \pmod{32}$ in `simplify_model.py` yields the target `val=eax, off=ecx, base=edx` colouring**:
+    - At $\Delta = 11$, `val` (`0x4040`, bucket 0), `off` (`0x4034`, bucket 20), and `base` (`0x4036`, bucket 22) all reach Step 27 of simplify with tied degree `d = 7` (`deg >= K`), and equal metric `3000000`.
+    - Because the worklist runs bucket `31..0`, bucket 22 (`base`) is removed first (Step 27), bucket 20 (`off`) second (Step 28), and bucket 0 (`val`) third (Step 29).
+    - Reversing removal order pops `val` first (`eax`), `off` second (`ecx`), and `base` third (`edx`).
+- **Reverse-Engineered `0x4xxx` Virtual Register Allocator (`0x4591ec..0x4593a9` & `sub_44d060`)**:
+  - At the start of each function's register allocation (`0x4591ec`, 5th hit in `test_vol_pos_union.cpp`), C2 clears a 32-bucket hash table at `0x476430` (`0x476430..0x4764b0`) and populates it via `0x4595a0` -> `sub_45a330` using hash function `sub_44d060` (`0x44d060`).
+  - Then `0x45928f..0x4593a9` walks buckets `0..31` of `0x476430` in ascending order and assigns sequential `0x4xxx` IDs (`0x47ce8c++`, starting from `0x4020`) to each entry's live ranges (`0x4(%ebx) = id`).
+  - Full bucket dump of `0x476430` at `0x459304` for `OpenLevelItem` (saved in `build/scratch/s58_antigravity/bkt_raw.txt`):
+    - Bucket 0: `0x4020` (`expr[2]=0x20`)
+    - Bucket 4: `0x4021` (`expr[2]=0x1f`)
+    - Bucket 7: `0x4023` (`expr[2]=0x0b`)
+    - Bucket 8: `0x4024` (`0x0d`), `0x4025..0x4026` (`0x0c`)
+    - Bucket 9: `0x4027` (`0x0e`)
+    - Bucket 12: `0x4029` (`0x10`, `offset` at store!)
+    - Bucket 13: `0x402a` (`0x11`)
+    - Bucket 14: `0x402b..0x402d` (`0x12`, `base` = `g_db`!)
+    - Bucket 15: `0x402e` (`0x13`), `0x402f` (`0x07`)
+    - Bucket 16: `0x4030` (`0x14`), `0x4031` (`0x24`, `offset` in prologue!)
+    - Bucket 17: `0x4032` (`0x15`)
+    - Bucket 18: `0x4033..0x4034` (`0x16`)
+    - Bucket 19: `0x4035` (`0x17`, `val` = `added.w`!)
+    - Bucket 20: `0x4036` (`0x18`), `0x4037` (`0x23`)
+    - Bucket 21: `0x4038` (`0x19`)
+    - Bucket 22: `0x4039` (`0x1a`)
+    - Bucket 24: `0x403a` (`0x09`), `0x403b` (`0x22`)
+    - Bucket 28: `0x403c` (`0x21`)
+  - Notice `expr[2]` (`0x8(%esi)`): the expressions with `expr[1] == 0x00010104` have sequential `0x8(%esi)` values `0x0c, 0x0e, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a` landing in consecutive buckets `8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22`!
+  - Specifically, `0x4029` (`expr[2]=0x10`, bucket 12), `0x402b` (`expr[2]=0x12`, bucket 14), and `0x4035` (`expr[2]=0x17`, bucket 19) are hashed directly by their expression/symbol index `0x8(%esi)`.
+  - Sweeping `pad_top` ($0..31$) before `#include "winlemm.h"` (`test_pad_top.cpp`) shifts the global symbol IDs (`p=2..5` stay at 784 bytes / 4 insns; other `p` values shift `g_treeNext`/`g_db` so `shown` or `children` ceases to spill, dropping frame size to 768 bytes).
+  - **Next lead for takeover**: Either (a) shift `0x8(%esi)` (the expression/temp counter in `OpenLevelItem`) by $+12..+17$ so `expr[2]=0x17` (`val`) wraps past bucket 31 into buckets `0..5` while keeping `expr[2]=0x10` (`offset`) and `0x12` (`base`) in buckets $< 32$, or (b) change the expression form of `g_db->entries[i].shown = added.w` so `offset` (`0x4029`) interferes with `0x4031` or one fewer neighbour, changing its degree relative to `base` and `val`.
+- **Production Status**: `src/lemmings/levelsel.cpp` remains untouched at 38/39 matching (`OpenLevelItem` 2 bytes off).
+
+### Claude session 41 (2026-11-09): all remaining PROCESS misses - in progress (local notes, nothing retained yet)
+User: "work on all remaining functions in PROCESS". AGENTS.md: builder.cpp taken over for this session. Scratch `build/scratch/s41_claude/`. Counts unchanged: PROCESS 201/206 (Builder::Process 3, AddTrapType 6, AddObjectType 8, Miner 25, Basher 27).
+- **Builder::Process:** both `y - 1` arguments are ONE CSE compiler variable (node 4026, `lea v4026,[ebp-1]` before each call, spilled in iteration 1 and rematerialized); colouring gives it eax (neighbours only esi/edi/ebx/ebp). The original has eax at call 1 and ecx at call 2, which a single node can only get from the post-colouring re-choice pass sub_41c850 (trace `bld/rc_raw.txt`: at the second lea latest-value = ebx (from `add ebx,[esi+0x10]`), candidate list `5 0 ...`, no rename). Spelling variants (`y + -1`, `-1 + y`, casts, `l->y - 1`, comma form) don't split the CSE. Needs understanding of sub_41cea0's candidate list.
+- **Map::AddTrapType:** registers already match; only narrowing differs (original `mov ax,[x]` / `add ax,cx` 16-bit, ours `movsx eax,word [x]` / `add eax,ecx`). `short`/`WORD fx` (96 + 216 variants, `map/t1.py`, `t2.py`) changes the frame (list gets a register, `sub esp,8`) -> 46-65. Not solved.
+- **Miner::Process:** model (`min/msim.py`) reproduces the colouring; target registers (n edx, y ecx, yoff eax) appear if `y` interferes with the jump-table temps (y live across the dispatch). **Jump table differs structurally:** original 14 dword entries, every break-only odd case 5..23 has its own entry (all -> exit 0x10003d8b); ours 9 entries, only 7/11/19/23 kept, 5/9/13/17/21 sent to default. Separate `case N: break;`, `return`, empty statements, `default` placement: same 9 entries; numbering does not change it.
+- **Basher::Process:** same table issue: original 10 entries (2-5, 7, 9, 11-15, 17, 18-21, 23, 25, 27-31, default), ours 7 (7/17/23 merged into default; 9/25 kept). Dummy locals 0..32 and pads 1..32: always 7 entries. **Structural lead (not retained, insn metric 27 -> 28):** computing the sprite index into `f` before the call, `x = l->xoff + l->x; y = l->y + l->yoff - 6; f = (l->dir == -1 ? SPR_DIGHOLE + 4 : SPR_DIGHOLE) + (l->frame & 15); g_map->EraseSprite(list, g_sprites, f, x, y);` (`bash/b2/f_b_XYN/basher.cpp`): the lea fold, schedule, yoff/y registers all match; differing code lines 138 -> 15 (only an ecx/edx swap of x / frame&15 / g_sprites / list temps, decided by the rename pass, not colouring). Keep it as the base to combine with a table fix.
+- **Next:** find the source form that keeps break-only cases as separate jump-table entries (look at matched switches elsewhere), then re-trace Miner/Basher.
+- **Claude s41: jump-table mechanism found (Miner + Basher).** C2 drops `case` labels whose body is only `break` (same target as default) from the jump table, with a **skip-next bug**: walking the sorted case list, after removing a candidate it skips the following label. This reproduces exactly which labels survive in ours (Miner: 5,9,13,17,21 removed, 7,11,19,23 kept; Basher: 7,17,23 removed, 9,25 kept). The original kept every break-only case, so its break-only cases were NOT plain `break` when that pass ran. Any statement c1 keeps (a dead store `x = 0;`, `x = y;`, `n = y;`, `y++`, `if (y);`, `y ? 0 : 0;`, `do ; while (0);`, `switch (0) {}`) gives the original's **14-entry table** for Miner (`build/scratch/s41_claude/min2/m2`, `min3/v`), but the case block then survives into layout and gets its own epilogue copy, so the function grows 368 -> 400 bytes (39 insns). Statements removed early (`x = x;`, `;`, `{}`, `(void)0`, `0;`, `goto` to the end, `return`, `for(;;)break;`, empty inline calls) keep 9 entries. Explicit `default:` (break/return, any position), case-block order (96 orders) and numbering (dummy locals 0..32, pads 1..32 on Basher) change nothing. Open question: what in the original kept the cases through pruning but left an empty block that maps to the shared exit (0x10003d8b). Next: find c2's pruning + empty-block code (debugger on the switch lowering) instead of more spelling sweeps. New tool `tools/msvc/jumptable.py OBJ [OFF]` reads a switch's table sizes from an .obj.
+
+### Claude session 41 (continued, 2026-11-09): OpenLevelItem takeover from Antigravity (user request) - in progress
+Read `Openlevelitem.md` (Antigravity s58 dossier). Reproduced State B (`build/scratch/s58_antigravity/test_vol_pos_union.cpp`, 4 insns, store `dx,ecx,eax` vs original `ax,edx,ecx`; copy in `build/scratch/s41_claude/oli/tb.cpp`). Fresh neighbour trace (`oli/nb6.txt`) + `simplify_model.py` reproduce it exactly (store nodes: offset 4029 eax, base 402b ecx, val 4035 edx; degrees 6/7/7 in the final round). Target needs removal order base, offset, val. **Model searches:** no single edge add/remove, no relabel of the three nodes' buckets, no merge of the offset live ranges gives the target; all solutions need >= 3 edge changes, every one including "val does not interfere with the prologue offset (4031)". New tool `tools/msvc/c2dbg/buckets_fn.py SRC HIT` (Antigravity's 0x4591ec/0x459304 bucket dump as a script: id, kind, expr[2], bucket).
+- **Claude s41 OpenLevelItem findings (corrections to `Openlevelitem.md`, no source change):**
+  - **The store nodes in the dossier are misidentified.** Operand traces (`oli/ops_tb.txt`, `ops_tbA.txt`) show the store `mov [off+base+0x80], val` uses: State B val = **80d1** (the 16-bit load of the union, an 0x8xxx temp), base = **80e5** (`g_db` load temp), offset = **4020** (the spilled `i*137` CSE reloaded under its own 0x4xxx id). State A: val = **403b** (the named `short value`, 0x4xxx), base 80d8, offset 403e. 4029/402b/4035 are other nodes.
+  - **These three form an isolated triangle** (each interferes only with the other two, degree 2), so their colours depend only on simplify worklist order: 0x8xxx temps (bucket 31..0) before all 0x4xxx (bucket 31..0); colours go in reverse removal order. Target `val=eax, off=ecx, base=edx` needs removal order base, offset, val. With val an 8xxx temp and offset 4xxx this is **impossible**; it works whenever val is a 4xxx node with a lower bucket than offset (model: 496/1024 bucket pairs). That is exactly State A (`value` named, 403b bucket 27 < offset 403e bucket 28/30). So the original's val was a **named 0x4xxx node without a block split**.
+  - Most plausible original: the count is an ordinary local that c2 **spilled** (a spilled candidate's reload keeps its 0x4xxx id, as the offset CSE does). In the original loop all 7 registers are taken (edi j, ebx j*137, bp children, esi prev, eax/ecx/edx temps); count and pos sit in memory ([esp+0x14] shared with `kind`, [esp+0x12]). In our builds a plain count/pos always wins a register: 24 type combos (`oli/o1`), 16 pos x count combos (`o4`, only volatile-pos + union keeps 784 B), 400 random declaration orders with `int added` (`o3`: all 768 B, 33-48). Dead copies of a named `value` (`t = value;` etc., 60 variants, `o2`) are removed before allocation (val stays 80d1).
+  - Unused dummy locals DO shift the per-function numbering (contrary to the dossier): 5 dummies moved 4020's expr[2] 0x20 -> 0x23 and reassigned ids. The bucket hash (sub_44d060) is opcode + kind word + the operand symbol's field +0x20, not expr[2].
+  - **Next:** find what in the original made the plain count lose the register (trace `rounds_fn.py` on `oli/ti.cpp` = plain `int added`: compare its iteration-1 FAIL set and metrics with what the original needs; look for an extra live value in the original's loop), or another construct that keeps `value` a named candidate without a branch.
+  - **Plain `int added` (oli/ti.cpp) check:** there val IS a named node (4023 = `added`, bucket 6), but it gets esi (not spilled) and offset stays 4020 (bucket 0). Even if it spilled, the order would be base, val, offset (val 4xxx bucket 6 before offset bucket 0 in the 31..0 walk) -> offset eax, val ecx: still wrong. So the original needs BOTH: the count spilled (named reload) AND the offset CSE's bucket above the count's (State A had offset 403e bucket 30 vs value 403b bucket 27, because adding `value` renumbered the hash buckets). Two independent conditions; no build so far meets both without the `switch`.
+- **Claude s41 APPLIED: Miner::Process 25 -> 14, Basher::Process 27 -> 14 (jump tables exact).** Break-only cases placed as the fall-through of the last case group, with a dead `x = 0;` before `break`; Basher also computes the sprite index into `f` first. Both tables now byte-identical (14 / 10 entries, all on the shared exit). Whole-DLL diff 33,674 -> 3,016 bytes (later functions back at their original addresses). Verified: build.py PROCESS 201/206 no regressions, mapcmp .data 0 / .bss 46 (pre-existing), make 0, Wine suite mine + bash MATCH (HD=0), HD level 1 + digger MATCH. Remaining: register rotations only (details in PROCESS.md 5.5). PROCESS.md is the shared dossier with Antigravity; Claude entries appended there (user asked to update it regularly).
+
+### Antigravity Session 59 (2026-11-09): Miner::Process AND Basher::Process MATCHED (7/7 in miner.cpp, 7/7 in basher.cpp) - PROCESS.DLL 203/206, Total 692/696!
+- **`Miner::Process` (`0x10003c60`, 400 bytes) 100% MATCHED (`src/process/miner.cpp` 7/7 functions, 768/768 bytes)**:
+  - **Root cause of the 14-instruction register rotation + `EraseSprite` argument evaluation**:
+    1. When `SPR_MINEHOLE + n + (l->dir == -1 ? 2 : 0)` was evaluated inline inside `EraseSprite(...)`, `C2.EXE` pushed `y + 1` and `x` before evaluating `l->dir == -1 ? 2 : 0`, which caused `l->frame` (`0x4032`) to be coloured `ecx` and `y` (`0x804f`) to be coloured `edx`.
+    2. When the entire sum `n += (l->dir == -1 ? SPR_MINEHOLE + 2 : SPR_MINEHOLE)` was computed into `n` before `EraseSprite`, `l->dir == -1` was evaluated before `y + 1`, flipping `l->frame` to `edx` and `y` to `ecx` (14 -> 6 insns), **but** C2 folded the 3-way addition into `lea edx, [edx+eax+0x158]`.
+    3. **The Fix (applied to `src/process/miner.cpp`)**:
+       ```cpp
+       n += l->dir == -1 ? 2 : 0;
+       g_map->EraseSprite(list, g_sprites, n + SPR_MINEHOLE, x, y + 1);
+       ```
+       Splitting `n += l->dir == -1 ? 2 : 0;` as a statement before `EraseSprite(..., n + SPR_MINEHOLE, x, y + 1)` evaluates `l->dir == -1 ? 2 : 0` before `y + 1` (giving `l->frame = edx` and `y = ecx`) while keeping `add eax, edx; add eax, 0x158` as two separate `add` instructions after `push ecx; push edi`, achieving a **100% byte-for-byte match (400/400 bytes)**!
+- **`Basher::Process` (`0x10001040`, 528 bytes) 100% MATCHED (`src/process/basher.cpp` 7/7 functions, 896/896 bytes)**:
+  - **Root cause of the 14-instruction register rotation (`l->frame` in `edx` vs `ecx`, `x` in `ecx` vs `edx`)**:
+    - Using `simplify_model.py` (`build/scratch/s59_antigravity/run_exp.py basher_sim`), we proved that adding a single interference edge `(0x4022, 0x803c)` between `f` (`0x4022`) and `x` (`0x803c`) raises `x`'s degree by 1 so `l->frame` (`0x4034`) is coloured `ecx` and `x` (`0x803c`) is coloured `edx`!
+    - **The Fix (applied to `src/process/basher.cpp`)**:
+      Just like `Miner::Process`, the original author computed the directional + frame offset into `f` first and added the base sprite index `SPR_DIGHOLE` inside the `EraseSprite` call:
+      ```cpp
+      f = (l->dir == -1 ? 4 : 0) + (l->frame & 15);
+      g_map->EraseSprite(list, g_sprites, f + SPR_DIGHOLE, x, y);
+      ```
+      Because `f` (`0x4022`) is now live into `f + SPR_DIGHOLE` inside `EraseSprite`, it interferes with `x` (`0x803c`) while C2 still folds `f + SPR_DIGHOLE` into `lea eax, [eax+ecx+0x14e]`, achieving a **100% byte-for-byte match (528/528 bytes)**!
+- **Verification (`AGENTS.md` Section 5)**:
+  - `zsh tools/msvc/try.sh PROCESS.DLL src/process/miner.cpp` -> **7/7 functions match (768/768 bytes)**.
+  - `zsh tools/msvc/try.sh PROCESS.DLL src/process/basher.cpp` -> **7/7 functions match (896/896 bytes)**.
+  - `python3 tools/msvc/build.py --funcs PROCESS` -> **203/206 functions match**, module diff drops from 3,016 to 2,962 bytes.
+  - `python3 tools/msvc/mapcmp.py PROCESS --sec .data` -> **0 symbols at the wrong address**.
+  - `make` -> exits with code 0 (zero compiler or linker warnings/errors).
+  - Updated `PROCESS.md` and `HANDOFF.md`. Global match count is now **692 / 696 (99.43%)** (only 3 functions left in `PROCESS.DLL`: `Builder::Process`, `Map::AddTrapType`, `Map::AddObjectType`, and 1 in `LEMMINGS.EXE`: `OpenLevelItem`)!

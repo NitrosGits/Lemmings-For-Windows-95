@@ -33,7 +33,8 @@ void Basher::Process(LEMMING *l, DLENTRY **list)
     case 18: case 19: case 20: case 21:
         x = l->xoff + l->x;
         y = l->y + l->yoff - 6;
-        g_map->EraseSprite(list, g_sprites, (l->dir == -1 ? 4 : 0) + (l->frame & 15) + SPR_DIGHOLE, x, y);
+        f = (l->dir == -1 ? 4 : 0) + (l->frame & 15);
+        g_map->EraseSprite(list, g_sprites, f + SPR_DIGHOLE, x, y);
         x = (l->x & ~3) + l->dir * 8;
         y = (l->y & ~3) - 8;
         if (CantBash(l, x, y)) {
@@ -54,14 +55,16 @@ void Basher::Process(LEMMING *l, DLENTRY **list)
             }
         }
         break;
-    case 7: case 9: case 17: case 23: case 25:
-        break;
     case 11: case 12: case 13: case 14: case 15:
     case 27: case 28: case 29: case 30: case 31:
         x = l->x += l->dir;
         y = l->y;
         if (!g_map->GetPixel(x, y) && !g_map->GetPixel(x, ++y) && !g_map->GetPixel(x, ++y))
             Message(l, MSG_FALL, 0, 0);
+        /* falls into the frames that do nothing */
+    case 7: case 9: case 17: case 23: case 25:
+        /* Dead store: keeps these labels in the VC++ 2.2 jump table (see miner.cpp). */
+        x = 0;
         break;
     }
 }
