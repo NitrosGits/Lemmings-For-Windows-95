@@ -60,7 +60,7 @@ HWND CreateStatBar(HINSTANCE hInstance, HWND parent, int id, RECT *r, STATBAR *b
     hwnd = CreateWindowEx(0, g_statBarClass, 0, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, r->left, r->top,
                           r->right, r->bottom, parent, (HMENU)id, hInstance, 0);
     if (hwnd)
-        SetWindowLong(hwnd, 0, (LONG)bar);
+        PORT_SetWindowLong(hwnd, 0, (PORT_LONG)bar);
     return hwnd;
 }
 
@@ -71,7 +71,7 @@ void ResetStatBar(HWND hwnd, STATBAR *bar, PANE *panes)
     if (bar && panes) {
         InitStatBar(bar, panes);
         SendMessage(hwnd, 0x701, 0, 0);
-        SetWindowLong(hwnd, 0, (LONG)bar);
+        PORT_SetWindowLong(hwnd, 0, (PORT_LONG)bar);
         InvalidateRect(hwnd, 0, FALSE);
     }
 }
@@ -105,7 +105,7 @@ LRESULT CALLBACK StatBarProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 /* 0x404180 */
 void StatBarDestroy(HWND hwnd)
 {
-    STATBAR *bar = (STATBAR *)GetWindowLong(hwnd, 0);
+    STATBAR *bar = (STATBAR *)PORT_GetWindowLong(hwnd, 0);
 
     if (bar && bar->font) {
         DeleteObject(bar->font);
@@ -116,14 +116,14 @@ void StatBarDestroy(HWND hwnd)
 /* 0x4041b0 */
 void StatBarCreate(HWND hwnd)
 {
-    SetWindowLong(hwnd, 0, 0);
+    PORT_SetWindowLong(hwnd, 0, 0);
 }
 
 /* 0x4041c0 */
 void StatBarPaint(HWND hwnd)
 {
     PAINTSTRUCT ps;
-    STATBAR *bar = (STATBAR *)GetWindowLong(hwnd, 0);
+    STATBAR *bar = (STATBAR *)PORT_GetWindowLong(hwnd, 0);
     HDC hdc = BeginPaint(hwnd, &ps);
 
     if (bar)

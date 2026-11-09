@@ -9,6 +9,7 @@
 #define LEMMING_H
 
 #include <windows.h>
+#include "port64.h"
 #include <string.h>
 #include "render.h"
 #include "vsmem.h"
@@ -312,7 +313,7 @@ inline void LEMMING::CheckMap()
         Message(this, MSG_OFFRIGHT, 0, 0);
     obj = g_map->GetObjectAt(x, y);
     if (obj)
-        Message(this, MSG_OBJECT, obj, (int)this);
+        Message(this, MSG_OBJECT, obj, (int)(PORT_INT)this);
 }
 
 inline void LEMMING::CountDown()

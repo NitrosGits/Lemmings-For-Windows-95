@@ -9,7 +9,7 @@ The port is written on `macOS-64` and merged from there into the other two.
 Visual C++ 2.2 or the 32-bit MinGW build (`make`) compile, so both keep working
 on these branches too.
 
-**Status:** plan only, nothing built yet (2026-11-09).
+**Status (2026-11-09, paused):** headers (`port/include`), `tools/port/rc2c.py`, the `#ifdef PORT_SDL` source changes (section 5) and most of the layer are written (`port/src`: core, files, registry, GDI, font, windows, messages, resources, menus, dialogs). Still to write: `controls.c` (Button, Static, Edit, ListBox, scroll bars), `wave.c`, `mci.c` + `port/macos/midi_coreaudio.c`, `harness.c`, `CMakeLists.txt`; nothing has been built or run natively yet. All 60 game sources compile for arm64 against the headers; the MinGW build is byte-identical to before.
 
 ---
 
@@ -186,10 +186,18 @@ in the WAV's format (SDL converts), `waveOutWrite` queues the data,
 `waveOutGetPosition` counts the bytes played, `waveOutReset` clears the stream.
 `mmio*` is a small RIFF reader.
 
-**Music.** The MCI sequencer commands the game sends are emulated on a MIDI
-file player that feeds a software synthesizer through another SDL audio stream,
-and `MM_MCINOTIFY` is posted when a tune ends. Which synthesizer is open
-question 1 (section 8).
+**Music.** The layer emulates the MCI sequencer commands the game sends
+(`port/src/mci.c`) and posts `MM_MCINOTIFY` when a tune ends. The tunes are
+played by the operating system's own MIDI synthesizer (the user's choice,
+section 8), through a small backend interface (`port/src/midi_backend.h`: open a
+file, play from a position, stop, position, length):
+
+- macOS: Core Audio's `MusicPlayer` with Apple's built-in General MIDI
+  synthesizer (`port/macos/midi_coreaudio.c`, AudioToolbox);
+- Windows (`windows-64`, later): the system's MIDI through WINMM;
+- Linux (`linux-64`, later): no built-in synthesizer, so no music unless a
+  backend is added there; `port/src/midi_none.c` reports no MIDI device, which
+  the game handles (it never opens the sequencer).
 
 **Other.** `WinHelp` (no Windows Help on modern systems): opens the English PDF
 manual from the original data (`MANUALS/ENGLISH.PDF`) with `SDL_OpenURL`.
@@ -243,7 +251,14 @@ turn up when the sources first compile for arm64.
 
 | File | Change |
 |---|---|
-| (none yet) | |
+| `src/include/port64.h` (new) | macros `PORT_GetWindowLong`/`PORT_SetWindowLong`, `PORT_LONG`, `PORT_DWORD`, `PORT_INT`: the pointer-sized Win64 names under `PORT_SDL`, the original's names and types otherwise |
+| `src/include/winlemm.h`, `src/include/lemming.h` | include `port64.h` |
+| `src/include/lemming.h` | `Message(..., (int)(PORT_INT)this)` (the handlers ignore that argument) |
+| `src/lemmings/window.cpp`, `statusbar.cpp` | the window object / status bar pointer in window longs through `PORT_Get/SetWindowLong` and `PORT_LONG` |
+| `src/lemmings/frame.cpp` | `g_global28 = (int)(PORT_INT)CreateStatBar(...)` (handles are 32-bit values in the layer, as on Win64) |
+| `src/lemmings/levelsel.cpp` | `return (BOOL)(PORT_INT)g_gameDlgBrush;` (WM_CTLCOLORDLG) |
+| `src/lemmings/midi.cpp` | MCI parameter blocks and `dwCallback` as `PORT_DWORD` |
+| `src/lemmings/mainwnd.cpp`, `frontend.cpp`, `endscreen.cpp` | WinHelp's string argument as `PORT_DWORD` |
 
 ---
 
@@ -259,7 +274,7 @@ turn up when the sources first compile for arm64.
    registration, player selection, options, level selection.
 5. **The game.** Level 1 plays: game view with scroll bars, docked icon panel
    and map, status bar; the end screen; floating tool windows.
-6. **Sound.** WAV effects, then music (with the synthesizer chosen in question 1).
+6. **Sound.** WAV effects, then music (MCI emulation and the Core Audio backend).
 7. **Checks.** The harness; level 1 and the digger run compared with the
    reference logs; a level ends cleanly; `make` and the 696/696 matching build
    still work.
@@ -294,7 +309,16 @@ turn up when the sources first compile for arm64.
 
 ---
 
-## 8. Open questions
+## 8. Decisions
+
+Asked on 2026-11-09; the user's answers:
+
+- **Approach:** the Win32 subset on SDL3 of section 1 (approved).
+- **Music:** each operating system's own MIDI synthesizer (section 3, Music).
+- **Third-party code:** small permissively licensed files may be added under
+  `port/third_party/` with their licences.
+
+The options that were offered for the music:
 
 1. **Music synthesizer** (the MIDI files need one; nothing in the original data
    can play them):
@@ -312,10 +336,7 @@ turn up when the sources first compile for arm64.
      instrument set: no SoundFont, period sound; more code and licence checks.
    - Each operating system's own MIDI synth (Core Audio's on macOS, `midiOut` on
      Windows; Linux has none built in): no files, but platform code outside the
-     shared layer.
-2. **Third-party code in the repository:** may small permissively licensed
-   libraries be added under `port/third_party/` (for example the two
-   TinySoundFont headers)?
+     shared layer. **Chosen.**
 
 ---
 

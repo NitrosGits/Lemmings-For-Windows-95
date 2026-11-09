@@ -5,6 +5,7 @@
 #define WINLEMM_H
 
 #include <windows.h>
+#include "port64.h"
 #include "vsmem.h"
 #include "filehand.h"
 #include "readdib.h"

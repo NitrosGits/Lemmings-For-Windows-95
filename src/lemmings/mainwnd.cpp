@@ -315,11 +315,11 @@ LRESULT OnCommand(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
         SendMessage(g_hwnd, 0x603, 0, 0);
         break;
     case 0x13a:
-        if (!WinHelp(hwnd, "LEMMINGS.HLP", HELP_KEY, (DWORD)"CONTENTS"))
+        if (!WinHelp(hwnd, "LEMMINGS.HLP", HELP_KEY, (PORT_DWORD)"CONTENTS"))
             ErrorBox(0x7f01);
         break;
     case 0x13c:
-        if (!WinHelp(hwnd, "LEMMINGS.HLP", HELP_PARTIALKEY, (DWORD)""))
+        if (!WinHelp(hwnd, "LEMMINGS.HLP", HELP_PARTIALKEY, (PORT_DWORD)""))
             ErrorBox(0x7f01);
         break;
     case 0x13e:

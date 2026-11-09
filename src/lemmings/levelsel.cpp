@@ -289,7 +289,7 @@ BOOL CALLBACK LevelDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
         LevelDlgCommand(hDlg, LOWORD(wParam), (HWND)LOWORD(lParam), HIWORD(wParam));
         return TRUE;
     case WM_CTLCOLORDLG:
-        return (BOOL)g_gameDlgBrush;
+        return (BOOL)(PORT_INT)g_gameDlgBrush;
     }
     return FALSE;
 }

@@ -13,7 +13,7 @@ int g_numWindowObjects = 0;
 /* 0x40d7e0 */
 LRESULT CALLBACK BaseWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-    Window *w = (Window *)GetWindowLong(hwnd, GWL_USERDATA);
+    Window *w = (Window *)PORT_GetWindowLong(hwnd, GWL_USERDATA);
 
     if (!w && msg != WM_CREATE)
         return DefWindowProc(hwnd, msg, wParam, lParam);
@@ -24,7 +24,7 @@ LRESULT CALLBACK BaseWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
             g_numWindows++;
             w = (Window *)((CREATESTRUCT *)lParam)->lpCreateParams;
-            SetWindowLong(hwnd, GWL_USERDATA, (LONG)w);
+            PORT_SetWindowLong(hwnd, GWL_USERDATA, (PORT_LONG)w);
             pt.x = 0;
             pt.y = 0;
             ClientToScreen(hwnd, &pt);

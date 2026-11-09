@@ -46,7 +46,7 @@ int HaveMidi(void)
     info.lpstrReturn = (LPSTR)&count;
     info.wDeviceType = MCI_DEVTYPE_SEQUENCER;
     info.dwRetSize = sizeof(count);
-    mciSendCommand(0, MCI_SYSINFO, MCI_SYSINFO_QUANTITY, (DWORD)&info);
+    mciSendCommand(0, MCI_SYSINFO, MCI_SYSINFO_QUANTITY, (PORT_DWORD)&info);
     return count != 0;
 }
 
@@ -69,7 +69,7 @@ DWORD OpenMidi(char *file)
         open.lpstrDeviceType = (LPCSTR)MCI_DEVTYPE_SEQUENCER;
         open.lpstrElementName = path;
         if ((err = mciSendCommand(0, MCI_OPEN, MCI_OPEN_TYPE | MCI_OPEN_TYPE_ID | MCI_OPEN_ELEMENT,
-                                  (DWORD)&open)) != 0) {
+                                  (PORT_DWORD)&open)) != 0) {
             g_midiDevice = (UINT)-1;
             mciGetErrorString(err, text, sizeof(text));
             MessageBox(0, text, path, 0);
@@ -78,14 +78,14 @@ DWORD OpenMidi(char *file)
         g_midiDevice = open.wDeviceID;
     }
     seek.dwTo = 0;
-    if ((err = mciSendCommand(g_midiDevice, MCI_SEEK, MCI_SEEK_TO_START, (DWORD)&seek)) != 0) {
+    if ((err = mciSendCommand(g_midiDevice, MCI_SEEK, MCI_SEEK_TO_START, (PORT_DWORD)&seek)) != 0) {
         mciSendCommand(g_midiDevice, MCI_CLOSE, 0, 0);
         mciGetErrorString(err, path, 128);
         MessageBox(0, path, "Midi Error", 0);
         return err;
     }
     set.dwTimeFormat = MCI_FORMAT_MILLISECONDS;
-    if ((err = mciSendCommand(g_midiDevice, MCI_SET, MCI_SET_TIME_FORMAT | MCI_WAIT, (DWORD)&set)) != 0) {
+    if ((err = mciSendCommand(g_midiDevice, MCI_SET, MCI_SET_TIME_FORMAT | MCI_WAIT, (PORT_DWORD)&set)) != 0) {
         mciSendCommand(g_midiDevice, MCI_CLOSE, 0, 0);
         mciGetErrorString(err, path, 128);
         MessageBox(0, path, "Midi Error", 0);
@@ -117,7 +117,7 @@ DWORD PauseMidi(void)
 
     if (g_midiDevice != (UINT)-1) {
         status.dwItem = MCI_STATUS_POSITION;
-        if ((err = mciSendCommand(g_midiDevice, MCI_STATUS, MCI_STATUS_ITEM, (DWORD)&status)) != 0) {
+        if ((err = mciSendCommand(g_midiDevice, MCI_STATUS, MCI_STATUS_ITEM, (PORT_DWORD)&status)) != 0) {
             char text[128];
 
             mciGetErrorString(err, text, sizeof(text));
@@ -148,14 +148,14 @@ DWORD RestartMidi(void)
     if (g_midiDevice == (UINT)-1 || !g_musicOn || !g_midiNotify)
         return (DWORD)-1;
     seek.dwTo = 0;
-    if ((err = mciSendCommand(g_midiDevice, MCI_SEEK, MCI_TO | MCI_WAIT, (DWORD)&seek)) != 0) {
+    if ((err = mciSendCommand(g_midiDevice, MCI_SEEK, MCI_TO | MCI_WAIT, (PORT_DWORD)&seek)) != 0) {
         mciSendCommand(g_midiDevice, MCI_CLOSE, 0, 0);
         mciGetErrorString(err, text, sizeof(text));
         MessageBox(0, text, "Midi Error", 0);
         return err;
     }
-    play.dwCallback = (DWORD)g_midiNotify;
-    if ((err = mciSendCommand(g_midiDevice, MCI_PLAY, MCI_NOTIFY, (DWORD)&play)) != 0) {
+    play.dwCallback = (PORT_DWORD)g_midiNotify;
+    if ((err = mciSendCommand(g_midiDevice, MCI_PLAY, MCI_NOTIFY, (PORT_DWORD)&play)) != 0) {
         mciGetErrorString(err, text, sizeof(text));
         MessageBox(0, text, "Midi Error", 0);
         CloseMidi();
@@ -175,9 +175,9 @@ DWORD PlayMidi(HWND hwnd)
 
     if (g_midiDevice == (UINT)-1 || !g_musicOn)
         return (DWORD)-1;
-    play.dwCallback = (DWORD)hwnd;
+    play.dwCallback = (PORT_DWORD)hwnd;
     g_midiNotify = hwnd;
-    if ((err = mciSendCommand(g_midiDevice, MCI_PLAY, MCI_NOTIFY, (DWORD)&play)) != 0) {
+    if ((err = mciSendCommand(g_midiDevice, MCI_PLAY, MCI_NOTIFY, (PORT_DWORD)&play)) != 0) {
         CloseMidi();
         mciGetErrorString(err, text, sizeof(text));
         MessageBox(0, text, "Midi Error", 0);
