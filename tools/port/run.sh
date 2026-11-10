@@ -32,8 +32,8 @@ cat > $R/prefs/registry.txt <<EOF
 "ProgramFilesDir"="C:\\\\Program Files"
 
 [HKEY_LOCAL_MACHINE\\Software\\Visual Sciences\\Windows Lemmings]
-"Params"="BCAIBNBMAEAA"
-"Registered"="Daniel"
+"Params"="ACAMAAABAEBO"
+"Registered"="Tester"
 
 [HKEY_LOCAL_MACHINE\\Software\\Visual Sciences\\Windows Lemmings\\Users]
 "LastUser"="Tester"
