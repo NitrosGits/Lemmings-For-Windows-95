@@ -705,16 +705,32 @@ int plat_window_snapshot(PlatWindow *p, const char *path)
                        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
                       colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:0 bitsPerPixel:32];
         NSGraphicsContext *g = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
-        CGContextRef ctx = g.CGContext;
+        CGImageRef fb = (__bridge CGImageRef)p->view.layer.contents;
         NSData *png;
 
-        if (!rep || !ctx)
+        if (!rep || !g)
             return 0;
-        /* the layer tree draws top-down: flip Core Graphics' bottom-up context */
-        CGContextTranslateCTM(ctx, 0, sz.height);
-        CGContextScaleCTM(ctx, 1, -1);
-        [p->view.layer renderInContext:ctx];
-        CGContextFlush(ctx);
+        [NSGraphicsContext saveGraphicsState];
+        NSGraphicsContext.currentContext = g;
+        /* the framebuffer, then each native view as AppKit draws it (the
+           layer tree alone misses a scroll view's scrollers) */
+        if (fb)
+            CGContextDrawImage(g.CGContext, CGRectMake(0, 0, sz.width, sz.height), fb);
+        for (NSView *v in p->view.subviews) {
+            NSBitmapImageRep *vr;
+            NSRect f = v.frame;
+
+            if (v.hidden || NSIsEmptyRect(f))
+                continue;
+            vr = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
+            [v cacheDisplayInRect:v.bounds toBitmapImageRep:vr];
+            [vr drawInRect:NSMakeRect(f.origin.x, sz.height - f.origin.y - f.size.height, f.size.width,
+                                      f.size.height)
+                  fromRect:NSZeroRect operation:NSCompositingOperationSourceOver fraction:1 respectFlipped:NO
+                     hints:nil];
+        }
+        [g flushGraphics];
+        [NSGraphicsContext restoreGraphicsState];
         png = [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
         return [png writeToFile:[NSString stringWithUTF8String:path] atomically:NO];
     }

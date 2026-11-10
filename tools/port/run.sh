@@ -8,7 +8,8 @@
 # BASELINE (e.g. build/runs/hd-base-l1.txt) the log is compared with it by
 # tools/cmplog.py. Muted unless SOUND=1. Needs the native build
 # (build/native/lemmings) and the original data (ORIG, default orig/WINLEMM,
-# else the main checkout's). LEVEL= starts another level (default 1).
+# else the main checkout's). LEVEL= starts another level (default 1);
+# PLAYERDB= uses another player database.
 ROOT=${0:A:h:h:h}
 EXE=${EXE:-$ROOT/build/native/lemmings}
 ORIG=${ORIG:-$ROOT/orig/WINLEMM}
@@ -23,6 +24,7 @@ mkdir -p "$R/prefs/drive_c/Program Files/WinLemm"
 # the Wine prefix's player database, if there is one (the same progress)
 DB="${ROOT:h:h:h}/build/wineprefix/drive_c/Program Files (x86)/WinLemm/usr00001.db"
 [[ -f $DB ]] || DB="$ROOT/build/wineprefix/drive_c/Program Files (x86)/WinLemm/usr00001.db"
+[[ -n $PLAYERDB ]] && DB=$PLAYERDB     # another player database (e.g. more levels done)
 [[ -f $DB ]] && cp "$DB" "$R/prefs/drive_c/Program Files/WinLemm/usr00001.db"
 cat > $R/prefs/registry.txt <<EOF
 [HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion]
