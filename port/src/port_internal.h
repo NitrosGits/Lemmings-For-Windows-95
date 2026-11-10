@@ -218,6 +218,8 @@ void gdi_hline(PDC *dc, int x0, int x1, int y, uint32_t c);
 void gdi_vline(PDC *dc, int x, int y0, int y1, uint32_t c);
 void gdi_pixel(PDC *dc, int x, int y, uint32_t c);
 uint32_t sys_xrgb(int index);
+void gdi_syscolors_load(void);      /* the system's colours, where it has its own (plat_syscolor) */
+int gdi_syscolors_native(void);
 PBrush *brush_get(HBRUSH h);
 
 /* ---- Text ---- */
@@ -304,6 +306,9 @@ void peer_destroy(Wnd *w);
 void peer_sync_all(void);
 void peer_focus(Wnd *w);
 int peer_paint(Wnd *w);     /* WM_PAINT of a control with a view: 1 if handled */
+int peer_paints(Wnd *w);    /* WM_PAINT of a window of the game's that is all view: 1 if handled */
+void peer_colors_changed(void);
+void peer_log_views(Wnd *w);
 int lb_serial(Wnd *w);      /* controls.c: changes when a list box's rows do */
 void peer_scrollbars_gone(Wnd *w);
 int wnd_scroll_page(Wnd *w, int bar);   /* wnd.c: what a page is (the client's size) */

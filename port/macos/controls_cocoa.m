@@ -1,11 +1,14 @@
 /*
  * macOS: the native controls of plat.h - AppKit views over a dialog's push
- * buttons, check boxes, radio buttons, group boxes, edit fields and list
- * boxes, as subviews of the window's PortView (whose layer shows the
- * framebuffer). The layer (port/src/peer.c) owns their state and pushes it
- * here; a view only reports what the user did (input_control*), and the layer
- * answers by pushing its new state back. Views made here while the layer
- * pushes are quiet: they report nothing.
+ * buttons, check boxes, radio buttons, group boxes, edit fields, list boxes
+ * and static text, and over the game's skill panel buttons and status bar,
+ * as subviews of the window's PortView (whose layer shows the framebuffer).
+ * The layer (port/src/peer.c) owns their state and pushes it here; a view
+ * only reports what the user did (input_control*), and the layer answers by
+ * pushing its new state back. Views made here while the layer pushes are
+ * quiet: they report nothing. Labels, group boxes, the skill panel's buttons
+ * and the status bar are shown only: the mouse goes through them to the
+ * layer's windows.
  */
 #include "cocoa_win32.h"
 
@@ -15,6 +18,11 @@ struct PlatControl {
     NSButton *button;
     NSTableView *table;
     NSMutableArray *rows;   /* an owner-drawn list's rows, as images */
+    NSTextField *label;     /* static text */
+    NSImageView *image;     /* a dialog's icon */
+    NSMutableArray *parts;  /* a status bar's labels */
+    uint32_t *pixels;       /* an icon button's picture as shown, to tell a new one */
+    int pw, ph, scale;      /* its size, and how many screen pixels each of its pixels is */
     uint32_t hwnd;
     int kind, nrows, rowH;
     int quiet;              /* our own changes: report nothing */
@@ -52,6 +60,31 @@ static NSFont *small_font(void)
 - (NSView *)hitTest:(NSPoint)p
 {
     return nil;                             /* a group box lets clicks through (HTTRANSPARENT) */
+}
+@end
+
+/* shown only: static text, and the parts of the game's own bars */
+@interface PortLabel : NSTextField
+@end
+
+@implementation PortLabel
+- (NSView *)hitTest:(NSPoint)p
+{
+    return nil;
+}
+@end
+
+@interface PortShown : NSView
+@end
+
+@implementation PortShown
+- (BOOL)isFlipped
+{
+    return YES;
+}
+- (NSView *)hitTest:(NSPoint)p
+{
+    return nil;                             /* the game's window under it takes the mouse */
 }
 @end
 
@@ -281,11 +314,13 @@ PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
         PlatControl *c;
 
         /* LEMMINGS_NATIVE_CONTROLS: which kinds get views - b(uttons), g(roup
-           boxes), e(dit fields), l(ists), t(he owner-drawn list); default all */
-        const char *only = getenv("LEMMINGS_NATIVE_CONTROLS");
-        char k = kind <= PC_RADIO ? 'b' : kind == PC_GROUPBOX ? 'g' : kind == PC_EDIT ? 'e' : kind == PC_LIST ? 'l' : 't';
+           boxes), e(dit fields), l(ists), t(he owner-drawn list), x (static
+           text), i(con buttons of the skill panel), u (the status bar);
+           default all (and c: the system's colours, s: its scrollers) */
+        char k = kind <= PC_RADIO ? 'b' : kind == PC_GROUPBOX ? 'g' : kind == PC_EDIT ? 'e' : kind == PC_LIST ? 'l'
+                 : kind == PC_LIST_OWNERDRAW ? 't' : kind == PC_ICONBUTTON ? 'i' : kind == PC_STATUSBAR ? 'u' : 'x';
 
-        if (only && !strchr(only, k))
+        if (!cocoa_native(k))
             return NULL;
         if (!g_ctl)
             g_ctl = [PortControls new];
@@ -355,7 +390,7 @@ PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
                 t.delegate = g_ctl;
                 t.target = g_ctl;
                 t.doubleAction = @selector(doubleClicked:);
-                t.backgroundColor = NSColor.whiteColor;
+                t.backgroundColor = NSColor.textBackgroundColor;
                 if (kind == PC_LIST_OWNERDRAW) {
                     t.selectionHighlightStyle = NSTableViewSelectionHighlightStyleNone;  /* the game draws it */
                     t.focusRingType = NSFocusRingTypeNone;
@@ -373,6 +408,73 @@ PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
                 c->keyView = c->table = t;
             }
             break;
+        case PC_LABEL:
+        case PC_LABEL_CENTER:
+        case PC_LABEL_RIGHT:
+        case PC_LABEL_LINE:
+            {
+                PortLabel *l = kind == PC_LABEL ? [PortLabel wrappingLabelWithString:@""]
+                                                : [PortLabel labelWithString:@""];
+
+                l.selectable = NO;
+                l.font = small_font();
+                l.alignment = kind == PC_LABEL_CENTER ? NSTextAlignmentCenter
+                              : kind == PC_LABEL_RIGHT ? NSTextAlignmentRight : NSTextAlignmentLeft;
+                if (kind != PC_LABEL)
+                    l.lineBreakMode = NSLineBreakByClipping;
+                else
+                    l.cell.truncatesLastVisibleLine = YES;      /* more text than its box holds ends in "..." */
+                c->view = c->label = l;
+            }
+            break;
+        case PC_ICON:
+            {
+                PortShown *v = [PortShown new];
+                NSImageView *iv = [NSImageView new];
+
+                if (!cocoa_app_icon()) {
+                    free(c);
+                    return NULL;        /* no icon file: the layer draws the game's own */
+                }
+                iv.image = cocoa_app_icon();
+                iv.imageScaling = NSImageScaleProportionallyUpOrDown;
+                iv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+                [v addSubview:iv];
+                c->view = v;
+                c->image = iv;
+            }
+            break;
+        case PC_ICONBUTTON:
+            {
+                /* a push button that stays on or off, as tall as it likes, with
+                   the game's number as its title over the game's picture; in a
+                   view of its own that lets the mouse through */
+                PortShown *v = [PortShown new];
+                NSButton *b = [NSButton buttonWithTitle:@" " target:nil action:NULL];
+
+                b.bezelStyle = NSBezelStyleFlexiblePush;
+                [b setButtonType:NSButtonTypePushOnPushOff];
+                b.refusesFirstResponder = YES;
+                b.font = [NSFont monospacedDigitSystemFontOfSize:10 weight:NSFontWeightSemibold];
+                b.imagePosition = NSImageBelow;
+                b.imageScaling = NSImageScaleNone;
+                b.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+                [v addSubview:b];
+                c->view = v;
+                c->button = b;
+            }
+            break;
+        case PC_STATUSBAR:
+            {
+                PortShown *v = [PortShown new];
+                NSBox *line = [NSBox new];
+
+                line.boxType = NSBoxSeparator;
+                [v addSubview:line];
+                c->view = v;
+                c->parts = [NSMutableArray new];
+            }
+            break;
         default:
             free(c);
             return NULL;
@@ -386,11 +488,10 @@ PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind)
 PlatControl *plat_scroller_create(PlatWindow *top, uint32_t hwnd, int vertical)
 {
     @autoreleasepool {
-        const char *only = getenv("LEMMINGS_NATIVE_CONTROLS");
         PlatControl *c;
         PortScroller *s;
 
-        if (only && !strchr(only, 's'))
+        if (!cocoa_native('s'))
             return NULL;
         if (!g_ctl)
             g_ctl = [PortControls new];
@@ -456,8 +557,160 @@ void plat_control_destroy(PlatControl *c)
         c->button = nil;
         c->table = nil;
         c->rows = nil;
+        c->label = nil;
+        c->image = nil;
+        c->parts = nil;
     }
+    free(c->pixels);
     free(c);
+}
+
+/* ---- Shown only: labels, the skill panel's buttons, the status bar ---- */
+
+/* static text that doesn't fit its Windows-sized box at the small size gets the mini size */
+static void fit_label(PlatControl *c)
+{
+    NSTextField *l = c->label;
+    NSFont *f = small_font();
+    NSRect need;
+
+    if (c->kind < PC_LABEL || c->kind > PC_LABEL_LINE || NSIsEmptyRect(l.frame))
+        return;
+    need = [l.stringValue boundingRectWithSize:NSMakeSize(c->kind == PC_LABEL ? l.frame.size.width - 4 : 10000, 10000)
+                                       options:NSStringDrawingUsesLineFragmentOrigin
+                                    attributes:@{NSFontAttributeName : f}];
+    if (need.size.width > l.frame.size.width - 2 || need.size.height > l.frame.size.height + 4)
+        f = [NSFont systemFontOfSize:[NSFont systemFontSizeForControlSize:NSControlSizeMini]];
+    l.font = f;
+}
+
+static void layout_status(PlatControl *c)
+{
+    NSRect b = c->view.bounds;
+    CGFloat x = b.size.width - 12, h = 14, y = floor((b.size.height - h) / 2);
+    NSUInteger i;
+
+    c->view.subviews.firstObject.frame = NSMakeRect(0, 0, b.size.width, 1);     /* the line above it */
+    for (i = c->parts.count; i-- > 1;) {    /* the counters, from the right */
+        NSTextField *l = c->parts[i];
+        CGFloat w = ceil(l.attributedStringValue.size.width) + 6;
+
+        x -= w;
+        l.frame = NSMakeRect(x, y, w, h);
+        x -= 18;
+    }
+    if (c->parts.count)
+        ((NSTextField *)c->parts[0]).frame = NSMakeRect(10, y, MAX(0, x - 10), h);
+}
+
+void plat_iconbutton_set(PlatControl *c, const uint32_t *argb, int w, int h, const char *count, int on)
+{
+    @autoreleasepool {
+        /* a button without a number has a blank title: the pictures stay in one row */
+        NSString *num = count[0] ? ([NSString stringWithUTF8String:count] ?: @" ") : @" ";
+        NSControlStateValue st = on ? NSControlStateValueOn : NSControlStateValueOff;
+        /* the game's pixels, each a whole number of the screen's: sharp, as the level is */
+        int k = c->view.window.backingScaleFactor > 1 ? 2 : 1;
+
+        if (c->kind != PC_ICONBUTTON)
+            return;
+        if (argb && w > 0 && h > 0 && (!c->pixels || c->pw != w || c->ph != h || c->scale != k ||
+                                       memcmp(c->pixels, argb, (size_t)w * (size_t)h * 4))) {
+            int x, y;
+            NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+                initWithBitmapDataPlanes:NULL pixelsWide:w * k pixelsHigh:h * k bitsPerSample:8 samplesPerPixel:4
+                                hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace
+                            bitmapFormat:NSBitmapFormatAlphaNonpremultiplied bytesPerRow:w * k * 4 bitsPerPixel:32];
+            unsigned char *d = rep.bitmapData;
+            NSImage *img;
+
+            for (y = 0; y < h * k; y++)
+                for (x = 0; x < w * k; x++) {
+                    uint32_t p = argb[(y / k) * w + x / k];
+                    unsigned char *o = d + ((size_t)y * (size_t)(w * k) + (size_t)x) * 4;
+
+                    o[0] = (unsigned char)(p >> 16);
+                    o[1] = (unsigned char)(p >> 8);
+                    o[2] = (unsigned char)p;
+                    o[3] = (unsigned char)(p >> 24);
+                }
+            rep = [rep bitmapImageRepByRetaggingWithColorSpace:NSColorSpace.sRGBColorSpace] ?: rep;
+            rep.size = NSMakeSize(w, h);
+            img = [[NSImage alloc] initWithSize:NSMakeSize(w, h)];
+            [img addRepresentation:rep];
+            c->button.image = img;
+            free(c->pixels);
+            c->pixels = malloc((size_t)w * (size_t)h * 4);
+            memcpy(c->pixels, argb, (size_t)w * (size_t)h * 4);
+            c->pw = w;
+            c->ph = h;
+            c->scale = k;
+        }
+        if (![c->button.title isEqualToString:num])
+            c->button.title = num;
+        if (c->button.state != st)
+            c->button.state = st;
+    }
+}
+
+void plat_statusbar_set(PlatControl *c, int n, const char *const *utf8)
+{
+    @autoreleasepool {
+        int i, changed = 0;
+
+        if (c->kind != PC_STATUSBAR)
+            return;
+        while ((int)c->parts.count < n) {
+            NSTextField *l = [NSTextField labelWithString:@""];
+            CGFloat size = [NSFont systemFontSizeForControlSize:NSControlSizeSmall];
+
+            /* the message as text, the counters with digits of one width */
+            l.font = c->parts.count ? [NSFont monospacedDigitSystemFontOfSize:size weight:NSFontWeightRegular]
+                                    : [NSFont systemFontOfSize:size];
+            l.textColor = c->parts.count ? NSColor.secondaryLabelColor : NSColor.labelColor;
+            l.lineBreakMode = NSLineBreakByTruncatingTail;
+            [c->view addSubview:l];
+            [c->parts addObject:l];
+            changed = 1;
+        }
+        while ((int)c->parts.count > n) {
+            [c->parts.lastObject removeFromSuperview];
+            [c->parts removeLastObject];
+            changed = 1;
+        }
+        for (i = 0; i < n; i++) {
+            NSString *t = [NSString stringWithUTF8String:utf8[i]] ?: @"";
+            NSTextField *l = c->parts[(NSUInteger)i];
+
+            if (![l.stringValue isEqualToString:t]) {
+                l.stringValue = t;
+                changed = 1;
+            }
+        }
+        if (changed)
+            layout_status(c);
+    }
+}
+
+void plat_control_describe(PlatControl *c, char *out, int size)
+{
+    @autoreleasepool {
+        NSMutableString *t = [NSMutableString new];
+
+        if (c->kind == PC_ICONBUTTON) {
+            int i, n = 0;
+
+            for (i = 0; c->pixels && i < c->pw * c->ph; i++)
+                n += c->pixels[i] >> 24 != 0;
+            [t appendFormat:@"number '%@' %s, picture %d x %d with %d pixels", c->button.title,
+                            c->button.state == NSControlStateValueOn ? "on" : "off", c->pw, c->ph, n];
+        } else if (c->kind == PC_STATUSBAR) {
+            for (NSTextField *l in c->parts)
+                [t appendFormat:@"%s'%@'", t.length ? " " : "", l.stringValue];
+        } else if (c->label)
+            [t appendFormat:@"'%@'", c->label.stringValue];
+        snprintf(out, (size_t)size, "%s", t.UTF8String ?: "");
+    }
 }
 
 /* a push button whose title doesn't fit at the small size gets the mini size
@@ -485,6 +738,14 @@ void plat_control_frame(PlatControl *c, int x, int y, int w, int h, int visible,
         c->button.frame = c->view.bounds;
     c->view.hidden = !visible;
     fit_button(c);
+    if (c->kind == PC_STATUSBAR)
+        layout_status(c);
+    else if (c->kind == PC_ICON)
+        c->image.frame = c->view.bounds;
+    else if (c->label) {
+        fit_label(c);
+        c->label.textColor = enabled ? NSColor.labelColor : NSColor.disabledControlTextColor;
+    }
     if ([c->keyView isKindOfClass:[NSControl class]])
         ((NSControl *)c->keyView).enabled = enabled != 0;
     if (c->table)
@@ -500,6 +761,10 @@ void plat_control_text(PlatControl *c, const char *utf8)
             ((NSBox *)c->view).title = s;
         else if (c->kind == PC_EDIT)
             ((NSTextField *)c->view).stringValue = s;
+        else if (c->label) {
+            c->label.stringValue = s;
+            fit_label(c);
+        }
         else if (c->button) {
             c->button.title = s;
             fit_button(c);

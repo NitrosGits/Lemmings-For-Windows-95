@@ -1330,6 +1330,19 @@ int WINAPI WinMain(HINSTANCE inst, HINSTANCE prev, LPSTR cmdLine, int show);
 #define GetTextExtentPoint32 GetTextExtentPoint32A
 #define GetTextMetrics GetTextMetricsA
 
+/* ---- What the game tells the native build (PORT_SDL; port/src/peer.c) ----
+ * Its skill panel and status bar are the system's controls there. Each returns
+ * 1 if a system view shows the window: the game then draws nothing itself. */
+/* an icon-panel button paints: its SRLE sprite and frame, the 256 colours, its
+   number (-1: it has none) and whether it is pressed */
+int port_native_icon(HWND hwnd, const BYTE *sprite, int frame, const RGBQUAD *colours, int count, int pressed);
+/* the status bar paints: its panes' texts from the right, as the game keeps them */
+int port_native_status(HWND hwnd, const char *const *texts, int n);
+/* the about box's system information: the system the game really runs on
+   (os: its name and version) and its memory (three lines, as the game words
+   them). 0 if the layer only knows the Windows 95 it stands in for. */
+int port_native_system(char *os, int osSize, char *memory, int memorySize);
+
 #ifdef __cplusplus
 }
 #endif

@@ -535,10 +535,10 @@ void wnd_nc_paint(Wnd *w)
     wh = w->rc.bottom - w->rc.top;
     b = border_of(w->style, w->exStyle, w->parent != NULL, w);
     if (b == 1)
-        gdi_frame3d(dc, &(RECT){0, 0, wv, wh}, 0, 0);
+        gdi_frame3d(dc, &(RECT){0, 0, wv, wh}, sys_xrgb(COLOR_WINDOWFRAME), sys_xrgb(COLOR_WINDOWFRAME));
     else if (b == 2) {
         gdi_frame3d(dc, &(RECT){0, 0, wv, wh}, sys_xrgb(COLOR_BTNSHADOW), sys_xrgb(COLOR_BTNHIGHLIGHT));
-        gdi_frame3d(dc, &(RECT){1, 1, wv - 1, wh - 1}, 0, sys_xrgb(COLOR_3DLIGHT));
+        gdi_frame3d(dc, &(RECT){1, 1, wv - 1, wh - 1}, sys_xrgb(COLOR_3DDKSHADOW), sys_xrgb(COLOR_3DLIGHT));
     }
     for (bar = 0; bar < 2; bar++) {
         RECT r;

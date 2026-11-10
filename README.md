@@ -154,7 +154,7 @@ Tested on Windows 11 (ARM64, in a VM) with a python.org Python and llvm-mingw: t
 
 ### 5. Native 64-bit Build (macOS, branch `macOS-64`)
 
-On the `macOS-64` branch the game also builds as a native 64-bit macOS program: the decompiled sources (changed only under `#ifdef PORT_SDL`, so the two builds above are unaffected) on a layer in `port/` that implements the part of Win32 the game uses, on the system's own toolkit. Its windows are AppKit windows, its menus are in the macOS menu bar, its dialogs use AppKit's controls, and sound effects and music play through Core Audio (the music on its built-in synthesizer). It needs no library beyond the system's. [PORTING.md](PORTING.md) has the design and the status.
+On the `macOS-64` branch the game also builds as a native 64-bit macOS program: the decompiled sources (changed only under `#ifdef PORT_SDL`, so the two builds above are unaffected) on a layer in `port/` that implements the part of Win32 the game uses, on the system's own toolkit. Its windows are AppKit windows, its menus are in the macOS menu bar (arranged as a Mac's: Quit, Settings and About in the application menu), its dialogs, the skill panel's buttons and the status bar are AppKit's controls in the system's light or dark look, it has an application icon made from the game's own, and sound effects and music play through Core Audio (the music on its built-in synthesizer). It needs no library beyond the system's. [PORTING.md](PORTING.md) has the design and the status.
 
 macOS (Apple silicon), with Apple's command line tools (`xcode-select --install`) and [Homebrew](https://brew.sh):
 ```bash

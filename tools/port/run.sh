@@ -9,7 +9,8 @@
 # tools/cmplog.py. Muted unless SOUND=1. Needs the native build
 # (build/native/lemmings) and the original data (ORIG, default orig/WINLEMM,
 # else the main checkout's). LEVEL= starts another level (default 1);
-# PLAYERDB= uses another player database.
+# PLAYERDB= uses another player database; ICONDOCKED=0 starts with the skill
+# panel in the upper dock (above the level) instead of the lower one.
 ROOT=${0:A:h:h:h}
 EXE=${EXE:-$ROOT/build/native/lemmings}
 ORIG=${ORIG:-$ROOT/orig/WINLEMM}
@@ -40,7 +41,7 @@ cat > $R/prefs/registry.txt <<EOF
 [HKEY_LOCAL_MACHINE\\Software\\Visual Sciences\\Windows Lemmings\\Users\\Tester]
 "DatabaseName"="C:\\\\Program Files\\\\WinLemm\\\\usr00001.db"
 "Height"=dword:000001d7
-"IconDocked"=dword:00000001
+"IconDocked"=dword:0000000${ICONDOCKED:-1}
 "IconX"=dword:00000000
 "IconY"=dword:00000000
 "Level"=dword:$(printf %08x ${LEVEL:-1})

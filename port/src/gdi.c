@@ -78,11 +78,36 @@ void rgn_subtract(Region *g, const RECT *s)
 
 /* ---- Colours ---- */
 
-static const COLORREF g_sysColors[25] = {
+/* Windows 95's colours; where the system has its own look (plat_syscolor:
+   macOS, light or dark) the layer and the game draw in its colours */
+static const COLORREF g_win95Colors[25] = {
     0xC0C0C0, 0x808000, 0x800000, 0x808080, 0xC0C0C0, 0xFFFFFF, 0x000000, 0x000000, 0x000000, 0xFFFFFF,
     0xC0C0C0, 0xC0C0C0, 0x808080, 0x800000, 0xFFFFFF, 0xC0C0C0, 0x808080, 0x808080, 0x000000, 0xC0C0C0,
     0xFFFFFF, 0x000000, 0xDFDFDF, 0x000000, 0xE1FFFF,
 };
+static COLORREF g_sysColors[25];
+static int g_sysNative;
+
+void gdi_syscolors_load(void)
+{
+    int i;
+
+    g_sysNative = 0;
+    for (i = 0; i < 25; i++) {
+        uint32_t x;
+
+        if (plat_syscolor(i, &x)) {
+            g_sysColors[i] = ((x >> 16) & 0xff) | (x & 0xff00) | ((x & 0xff) << 16);
+            g_sysNative = 1;
+        } else
+            g_sysColors[i] = g_win95Colors[i];
+    }
+}
+
+int gdi_syscolors_native(void)
+{
+    return g_sysNative;
+}
 
 DWORD WINAPI GetSysColor(int index)
 {
@@ -557,6 +582,10 @@ HDC dc_for_window(Wnd *w, int client, const RECT *paint)
     }
     dc = dc_new(client ? DCK_CLIENT : DCK_WINDOW);
     dc->wnd = w;
+    if (g_sysNative) {      /* black on white only where the system's windows are */
+        dc->text = GetSysColor(COLOR_WINDOWTEXT);
+        dc->bk = GetSysColor(COLOR_WINDOW);
+    }
     top = wnd_toplevel(w);
     dc->s = &top->fb;
     if (client)
@@ -1441,6 +1470,7 @@ void gdi_init(void)
     PBitmap *b;
     int i;
 
+    gdi_syscolors_load();
     memset(&g_screenSurf, 0, sizeof g_screenSurf);
     g_screenSurf.w = g_screenSurf.h = 1;
     g_screenSurf.bpp = 32;

@@ -255,6 +255,29 @@ void WINAPI GlobalMemoryStatus(LPMEMORYSTATUS st)
     st->dwAvailVirtual = 0x7ff00000;
 }
 
+/* what the game's about box says of the system (windows.h): GetVersion and
+   GlobalMemoryStatus above stay Windows 95's and 32 bits wide, because the
+   game decides things by them */
+int port_native_system(char *os, int osSize, char *memory, int memorySize)
+{
+    const double gb = 1024.0 * 1024.0 * 1024.0;
+    uint64_t total = plat_ram_bytes(), avail = plat_ram_available();
+    char size[32];
+
+    if (!plat_os_name(os, osSize) || !total)
+        return 0;
+    if (total % (1u << 30))
+        snprintf(size, sizeof size, "%.1f GB", total / gb);
+    else
+        snprintf(size, sizeof size, "%llu GB", (unsigned long long)(total >> 30));
+    if (avail && avail <= total)
+        snprintf(memory, (size_t)memorySize, "Physical Memory Size : %s\nPercent Used : %d%%\n"
+                 "Avail Memory Free : %.1f GB\n", size, (int)(100 - avail * 100 / total), avail / gb);
+    else
+        snprintf(memory, (size_t)memorySize, "Physical Memory Size : %s\n", size);
+    return 1;
+}
+
 /* Global memory: a block with its size in front; the handle is the block */
 typedef struct GBlock {
     SIZE_T size;
@@ -724,6 +747,10 @@ BOOL WINAPI WinHelpA(HWND hwnd, LPCSTR file, UINT cmd, ULONG_PTR data)
         return FALSE;
     fclose(f);
     snprintf(url, sizeof url, "file://%s", host);
+    if (port_harness) {         /* a scripted run opens nothing on the user's desktop */
+        port_harness_log("  help: %s", strrchr(url, '/') + 1);
+        return TRUE;
+    }
     return plat_open_url(url);
 }
 

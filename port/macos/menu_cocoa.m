@@ -1,12 +1,30 @@
 /*
- * macOS: the menu bar. The application menu (About, Hide, Quit) comes first;
- * the menu of the window that has one (the game's frame) follows it. Each of
- * its drop-down menus is filled from the layer's menu as it opens (menu.c's
- * menu_native_*: WM_INITMENU and WM_INITMENUPOPUP first, so the game can
- * enable and check items), highlighting an item sends WM_MENUSELECT (the
- * game's status-bar help) and choosing one posts WM_COMMAND.
+ * macOS: the menu bar. The application menu (About, Settings, Hide, Quit)
+ * comes first; the menu of the window that has one (the game's frame) follows
+ * it, then the Window menu, and Help last. Each of the game's drop-down menus
+ * is filled from the layer's menu as it opens (menu.c's menu_native_*:
+ * WM_INITMENU and WM_INITMENUPOPUP first, so the game can enable and check
+ * items), highlighting an item sends WM_MENUSELECT (the game's status-bar
+ * help) and choosing one posts WM_COMMAND.
+ *
+ * The game's menus are arranged as a Mac's are: Exit, Set Options and About
+ * are in the application menu (Quit, Settings, About) and not again in File
+ * and Help; Help's Contents is "Lemmings Help" and the two items about
+ * Windows' help program are left out; "..." is an ellipsis.
  */
 #include "cocoa_win32.h"
+
+/* the game's commands (src/lemmings/lemmings.rc) with a place of their own here */
+enum {
+    CMD_EXIT = 277,             /* File > Exit: the application menu's Quit */
+    CMD_HELP = 314,             /* Help > Contents: "Lemmings Help" */
+    CMD_HELP_SEARCH = 316,      /* Help > Search for Help On..., How to Use Help: WinHelp's own */
+    CMD_HELP_ON_HELP = 318,
+    CMD_ABOUT = 320,            /* Help > About Lemmings...: the application menu's */
+    CMD_OPTIONS = 375           /* File > Set Options...: the application menu's Settings */
+};
+
+static int g_mac = 1;           /* 0 (LEMMINGS_NATIVE_CONTROLS without 'm'): the game's menus as they are */
 
 @interface PortMenu : NSMenu
 @property(nonatomic) uint32_t hmenu;        /* the layer's menu */
@@ -23,10 +41,44 @@
 static PortMenuDelegate *g_menuDelegate;
 static uint32_t g_owner, g_bar;             /* the window whose menu is shown, and that menu */
 static NSMutableArray *g_barItems;          /* its items in the menu bar */
+static NSMenuItem *g_windowItem;            /* the Window menu: after the game's menus, before Help */
 
 static NSString *ns(const char *utf8)
 {
     return [NSString stringWithUTF8String:utf8] ?: @"";
+}
+
+/* an item's title as a Mac writes it */
+static NSString *mac_title(const char *text, unsigned id)
+{
+    NSString *t = ns(text);
+
+    if (!g_mac)
+        return t;
+    if (id == CMD_HELP)
+        return @"Lemmings Help";
+    if ([t hasSuffix:@"..."])
+        t = [[t substringToIndex:t.length - 3] stringByAppendingString:@"\u2026"];
+    return t;
+}
+
+static int mac_hidden(unsigned id)
+{
+    return g_mac && (id == CMD_EXIT || id == CMD_OPTIONS || id == CMD_ABOUT || id == CMD_HELP_SEARCH ||
+                     id == CMD_HELP_ON_HELP);
+}
+
+/* no separator first, last or after another */
+static void tidy_separators(NSMenu *m)
+{
+    NSInteger i;
+
+    for (i = m.numberOfItems - 1; i >= 0; i--) {
+        NSMenuItem *it = [m itemAtIndex:i];
+
+        if (it.separatorItem && (i == 0 || i == m.numberOfItems - 1 || [m itemAtIndex:i - 1].separatorItem))
+            [m removeItemAtIndex:i];
+    }
 }
 
 static PortMenu *new_menu(NSString *title, uint32_t hmenu, uint32_t parent, int pos)
@@ -64,7 +116,10 @@ static PortMenu *new_menu(NSString *title, uint32_t hmenu, uint32_t parent, int 
             [m addItem:[NSMenuItem separatorItem]];
             continue;
         }
-        it = [[NSMenuItem alloc] initWithTitle:ns(text) action:sub ? NULL : @selector(choose:) keyEquivalent:@""];
+        if (!sub && mac_hidden(id))
+            continue;
+        it = [[NSMenuItem alloc] initWithTitle:mac_title(text, sub ? 0 : id)
+                                        action:sub ? NULL : @selector(choose:) keyEquivalent:@""];
         it.target = self;
         it.tag = (NSInteger)id;
         it.enabled = live && !(flags & (MF_GRAYED | MF_DISABLED));
@@ -73,6 +128,8 @@ static PortMenu *new_menu(NSString *title, uint32_t hmenu, uint32_t parent, int 
             it.submenu = new_menu(ns(text), sub, m.hmenu, i);
         [m addItem:it];
     }
+    if (g_mac)
+        tidy_separators(m);
 }
 - (BOOL)menuHasKeyEquivalent:(NSMenu *)menu forEvent:(NSEvent *)event target:(id *)target action:(SEL *)action
 {
@@ -85,7 +142,7 @@ static PortMenu *new_menu(NSString *title, uint32_t hmenu, uint32_t parent, int 
 
     if (![m isKindOfClass:[PortMenu class]] || !item || !g_owner)
         return;
-    i = [m indexOfItem:item];
+    i = item.submenu ? ((PortMenu *)item.submenu).pos : 0;
     if (item.submenu)
         menu_native_select(g_owner, m.hmenu, (unsigned)i, MF_POPUP | MF_HILITE | MF_MOUSESELECT);
     else
@@ -125,6 +182,8 @@ void plat_menubar_set(uint32_t hwnd, uint32_t hmenu)
             [bar removeItem:it];
         [g_barItems removeAllObjects];
         NSApp.helpMenu = nil;
+        if (g_windowItem && g_windowItem.menu)
+            [bar removeItem:g_windowItem];
         g_owner = hmenu ? hwnd : 0;
         g_bar = hmenu;
         n = hmenu ? menu_native_count(hmenu) : 0;
@@ -139,11 +198,16 @@ void plat_menubar_set(uint32_t hwnd, uint32_t hmenu)
             it = [[NSMenuItem alloc] initWithTitle:ns(text) action:NULL keyEquivalent:@""];
             it.submenu = new_menu(ns(text), sub, hmenu, i);
             it.enabled = !(flags & (MF_GRAYED | MF_DISABLED));
+            if (!strcmp(text, "Help")) {
+                if (g_windowItem && !g_windowItem.menu)
+                    [bar addItem:g_windowItem];
+                NSApp.helpMenu = it.submenu;
+            }
             [bar addItem:it];
             [g_barItems addObject:it];
-            if (!strcmp(text, "Help"))
-                NSApp.helpMenu = it.submenu;
         }
+        if (g_windowItem && !g_windowItem.menu)
+            [bar addItem:g_windowItem];
     }
 }
 
@@ -214,15 +278,34 @@ void cocoa_menu_init(id appDelegate)
     g_barItems = [NSMutableArray new];
     item.submenu = app;
     [bar addItem:item];
+    g_mac = cocoa_native('m');
     i = [app addItemWithTitle:@"About Lemmings" action:@selector(about:) keyEquivalent:@""];
     i.target = appDelegate;
     [app addItem:[NSMenuItem separatorItem]];
+    if (g_mac) {
+        i = [app addItemWithTitle:@"Settings\u2026" action:@selector(settings:) keyEquivalent:@","];
+        i.target = appDelegate;
+        [app addItem:[NSMenuItem separatorItem]];
+    }
     [app addItemWithTitle:@"Hide Lemmings" action:@selector(hide:) keyEquivalent:@"h"];
     i = [app addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
     i.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     [app addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
     [app addItem:[NSMenuItem separatorItem]];
     [app addItemWithTitle:@"Quit Lemmings" action:@selector(terminate:) keyEquivalent:@"q"];
+    if (g_mac) {
+        /* the Window menu: the system adds the windows' names and its own items to it */
+        NSMenu *win = [[NSMenu alloc] initWithTitle:@"Window"];
+
+        [win addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+        [win addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+        [win addItem:[NSMenuItem separatorItem]];
+        [win addItemWithTitle:@"Bring All to Front" action:@selector(arrangeInFront:) keyEquivalent:@""];
+        g_windowItem = [[NSMenuItem alloc] initWithTitle:@"Window" action:NULL keyEquivalent:@""];
+        g_windowItem.submenu = win;
+        [bar addItem:g_windowItem];
+        NSApp.windowsMenu = win;
+    }
     NSApp.mainMenu = bar;
     [[NSNotificationCenter defaultCenter] addObserver:g_menuDelegate selector:@selector(trackingEnded:)
                                                  name:NSMenuDidEndTrackingNotification object:bar];

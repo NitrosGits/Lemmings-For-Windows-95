@@ -84,6 +84,17 @@ char *GetSystemInfoText(void)
                  HIBYTE(caps.vDriverVersion), LOBYTE(caps.vDriverVersion), caps.szPname, type);
     } else
         wsprintf(midi, "No MIDI device activated\n");
+#ifdef PORT_SDL                 /* the native build: the system it really runs on (PORTING.md) */
+    {
+        char memory[256];
+
+        if (port_native_system(os, sizeof(os), memory, sizeof(memory))) {
+            wsprintf(text, "Operating System : %s\nLemmings Build Number : %d\n%s", os, 31, memory);
+            strcat(text, midi);
+            return text;
+        }
+    }
+#endif
     wsprintf(text, "Operating System : %s\nLemmings Build Number : %d\nPhysical Memory Size : %ld bytes\n"
              "Percent Used : %d%%\nAvail Memory Free : %ld bytes\n",
              os, 31, g_memStatus.dwTotalPhys, g_memStatus.dwMemoryLoad, g_memStatus.dwAvailPhys);

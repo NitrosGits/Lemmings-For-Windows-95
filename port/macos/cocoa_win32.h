@@ -37,6 +37,14 @@ struct PlatWindow {
 /* keeps a window or view until the next pump: AppKit may still be inside it */
 void cocoa_bury(id object);
 
+/* LEMMINGS_NATIVE_CONTROLS: whether this kind of thing is the system's ('c' its
+   colours, 'b' buttons, ...: PORTING.md); the default is all of them */
+int cocoa_native(char kind);
+
+/* the application's icon without the margin Apple's icon grid leaves round its
+   shape (a dialog shows it edge to edge); nil if the build made none */
+NSImage *cocoa_app_icon(void);
+
 /* menu_cocoa.m */
 void cocoa_menu_init(id appDelegate);
 

@@ -1,0 +1,42 @@
+  view status: 'Save 01 of 10 lemmings' 'Out: 07' 'Home: 00'
+  view icon: number ' ' on, picture 34 x 42
+  view icon: number ' ' off, picture 34 x 42 with 443 pixels
+  view icon: number ' ' off, picture 34 x 42 with 196 pixels
+  view icon: number ' ' off, picture 34 x 42 with 487 pixels
+  view icon: number ' ' off, picture 34 x 42 with 447 pixels
+  view icon: number ' ' off, picture 34 x 42 with 401 pixels
+  view icon: number ' ' off, picture 34 x 42 with 381 pixels
+  view icon: number '10' off, picture 34 x 42 with 340 pixels
+  view icon: number '50' off, picture 34 x 42 with 415 pixels
+  view icon: number '50' off, picture 34 x 42 with 275 pixels
+  view icon: number ' ' off, picture 34 x 42 with 448 pixels
+  view icon: number ' ' off, picture 34 x 42 with 417 pixels
+  view icon: number ' ' off, picture 34 x 42 with 598 pixels
+  view status: 'Choose Digger icon' 'Out: 07' 'Home: 00'
+  view icon: number ' ' off, picture 34 x 42 with 341 pixels
+  view icon: number ' ' off, picture 34 x 42 with 443 pixels
+  view icon: number ' ' off, picture 34 x 42 with 196 pixels
+  view icon: number ' ' off, picture 34 x 42 with 487 pixels
+  view icon: number ' ' off, picture 34 x 42 with 447 pixels
+  view icon: number ' ' off, picture 34 x 42 with 401 pixels
+  view icon: number ' ' off, picture 34 x 42 with 381 pixels
+  view icon: number '10' on, picture 34 x 42
+  view icon: number '50' off, picture 34 x 42 with 415 pixels
+  view icon: number '50' off, picture 34 x 42 with 275 pixels
+  view icon: number ' ' off, picture 34 x 42 with 448 pixels
+  view icon: number ' ' off, picture 34 x 42 with 417 pixels
+  view icon: number ' ' off, picture 34 x 42 with 598 pixels
+  view status: 'Walker' 'Out: 08' 'Home: 00'
+  view icon: number ' ' off, picture 34 x 42 with 341 pixels
+  view icon: number ' ' off, picture 34 x 42 with 443 pixels
+  view icon: number ' ' off, picture 34 x 42 with 196 pixels
+  view icon: number ' ' off, picture 34 x 42 with 487 pixels
+  view icon: number ' ' off, picture 34 x 42 with 447 pixels
+  view icon: number ' ' off, picture 34 x 42 with 401 pixels
+  view icon: number ' ' off, picture 34 x 42 with 381 pixels
+  view icon: number '09' on, picture 34 x 42
+  view icon: number '50' off, picture 34 x 42 with 415 pixels
+  view icon: number '50' off, picture 34 x 42 with 275 pixels
+  view icon: number ' ' off, picture 34 x 42 with 448 pixels
+  view icon: number ' ' off, picture 34 x 42 with 417 pixels
+  view icon: number ' ' off, picture 34 x 42 with 598 pixels

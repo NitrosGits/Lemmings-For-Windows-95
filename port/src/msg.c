@@ -71,6 +71,8 @@ LRESULT WINAPI SendMessageA(HWND h, UINT m, WPARAM wp, LPARAM lp)
 
     if (!w || !w->proc)
         return 0;
+    if (m == WM_PAINT && peer_paints(w))
+        return 0;
     return w->proc(h, m, wp, lp);
 }
 
@@ -545,9 +547,61 @@ void input_tracking_idle(void)
     present_windows();
 }
 
+/* ---- The system's colours changed (light and dark) ---- */
+
+static int g_colorsChanged;
+
+void input_syscolors_changed(void)
+{
+    g_colorsChanged = 1;        /* told inside the pump: acted on after it */
+}
+
+static void collect(Wnd *w, HWND **list, int *n, int *cap)
+{
+    Wnd *c;
+
+    if (w->destroyed)
+        return;
+    if (*n == *cap) {
+        *cap = *cap ? *cap * 2 : 64;
+        *list = realloc(*list, (size_t)*cap * sizeof **list);
+    }
+    (*list)[(*n)++] = w->h;
+    for (c = w->child; c; c = c->next)
+        collect(c, list, n, cap);
+}
+
+static void colors_changed(void)
+{
+    COLORREF face = GetSysColor(COLOR_BTNFACE);
+    HWND *list = NULL;
+    int n = 0, cap = 0, i;
+    Wnd *t;
+
+    g_colorsChanged = 0;
+    gdi_syscolors_load();
+    for (t = port_top; t; t = t->next)
+        collect(t, &list, &n, &cap);
+    /* every window hears of it (Windows tells the top-level ones, which pass
+       it on), and with it the button face colour until now: the game's
+       windows keep that colour as their background */
+    for (i = 0; i < n; i++)
+        if (wnd_get(list[i]))
+            SendMessageA(list[i], WM_SYSCOLORCHANGE, (WPARAM)face, 0);
+    free(list);
+    for (t = port_top; t; t = t->next)
+        if (!t->destroyed)
+            wnd_redraw_all(t);
+    peer_colors_changed();
+}
+
 int msg_pump(int wait)
 {
-    return plat_pump(wait);
+    int n = plat_pump(wait);
+
+    if (g_colorsChanged)
+        colors_changed();
+    return n;
 }
 
 /* ---- Presenting ---- */
@@ -674,6 +728,8 @@ LRESULT WINAPI DispatchMessageA(const MSG *msg)
             scroll_track(w, hit == HTVSCROLL ? SB_VERT : SB_HORZ, fx, fy);
         return 0;
     }
+    if (msg->message == WM_PAINT && peer_paints(w))
+        return 0;
     r = w->proc(msg->hwnd, msg->message, msg->wParam, msg->lParam);
     if (msg->message == WM_PAINT && wnd_get(msg->hwnd) && w->invalid) {
         /* painted without BeginPaint: validate, as DefWindowProc would */

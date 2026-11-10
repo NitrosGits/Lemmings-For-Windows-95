@@ -12,6 +12,7 @@
 
 int midi_backend_available(void);
 const char *midi_backend_name(void);
+unsigned midi_backend_version(void);    /* as MIDIOUTCAPS has it: 0x0100 is 1.0 */
 void *midi_backend_open(const char *hostPath);      /* NULL if it can't be played */
 void midi_backend_close(void *m);
 int midi_backend_play(void *m, uint32_t fromMs);    /* 0 when it plays */

@@ -20,8 +20,14 @@ the original game's reference logs (`tools/port/checks.sh`, section 8): level
 system key) and a nuke to the end of the level all MATCH, and three dialogs
 driven by system clicks and keys end in the same control states as the drawn
 controls did. Visual C++ 2.2 still matches all 696 functions with the port's
-source changes, and the MinGW build is unchanged. Floating (undocked) tool
-windows are untried, and so are `linux-64` and `windows-64`.
+source changes, and the MinGW build is unchanged. A tool window dragged out of
+the main window has only been tried by a scripted drag (it becomes a window
+of its own, with its buttons); `linux-64` and `windows-64` are untried.
+
+Since 2026-11-10 the port also looks like a Mac program (section 3): the
+system's light or dark colours, system labels in the dialogs, the skill panel
+and the status bar as system views, the menus arranged as a Mac's, and an
+application icon made from the game's own.
 
 The port first ran on SDL3 (2026-11-09). On the user's request it moved to
 each system's own toolkit (2026-11-10): the layer reaches the system only
@@ -205,9 +211,13 @@ control would have handled (`BM_CLICK`, `LB_SETCURSEL` + `LBN_SELCHANGE`,
 `LBN_DBLCLK`, `WM_SETTEXT` + `EN_UPDATE`/`EN_CHANGE`, and Return, Escape and Tab
 through the dialog manager). The owner-drawn level tree is an `NSTableView`
 whose rows the game draws (`WM_DRAWITEM` into a DIB section, one image per
-row). Static text and the game's own classes (`IconTextClass`,
-`IconImageClass`) stay drawn: they rely on `WM_CTLCOLOR*` and the game's
-backgrounds. Each radio button gets its own superview, because AppKit groups
+row). Static text, and the level dialog's own centred text class
+(`IconTextClass`), is a system label (`NSTextField`, the small system font,
+the mini size where the Windows-sized box is too narrow, an ellipsis where it
+is too short); a static icon is the application's icon, and takes the icon's
+size as it does on Windows (the About box's is 18 x 20 dialog units in the
+template and was drawn cropped). The game's picture controls
+(`IconImageClass`) stay drawn. Each radio button gets its own superview, because AppKit groups
 all the radio buttons of a view while the dialog's groups are its `WS_GROUP`
 runs. Any window's scroll bars (the level view's) are system scrollers the
 same way (`NSScroller`, the always-shown legacy style, the knob as large as
@@ -215,18 +225,55 @@ the view is part of the level): a click in the track sends `SB_PAGELEFT`/
 `SB_PAGERIGHT`, moving the knob `SB_THUMBTRACK`, letting it go
 `SB_THUMBPOSITION` and `SB_ENDSCROLL`, and the knob follows the game's own
 scrolling (the map, the screen edges) at each present. `LEMMINGS_NATIVE_CONTROLS`
-(letters `b`uttons, `g`roup boxes, `e`dit, `l`ists, `t`ree, `s`crollers)
-limits which kinds get views, for comparisons.
+(letters `b`uttons, `g`roup boxes, `e`dit, `l`ists, `t`ree, `s`crollers,
+`x` static text and icons, `i` the skill panel, `u` the status bar, `c` the
+system's colours, `m` the Mac arrangement of the menus) limits which of these
+are the system's, for comparisons; `-` gives the layer's own drawn controls
+in Windows 95's colours.
+
+*The game's own bars (`peer.c`, `controls_cocoa.m`).* The skill panel's
+thirteen buttons and the status bar are windows of the game's own class that
+paint themselves, so the game says what they show when it paints them
+(`port_native_icon`, `port_native_status`, section 5). Each button is a
+system push button's bezel (`NSButton`, on while the game's button is
+pressed: the chosen skill in the accent colour) with the game's sprite frame
+over it (decoded from the SRLE sprite with its clear pixels clear, each pixel
+a whole number of screen pixels) and its number in the system font; the
+status bar is a line of system labels, the message on the left and the
+counters (digits of one width) on the right, without the sunken boxes. Both
+are shown only: the mouse goes through the views to the game's windows, so
+pressing, the release rate repeating while held, the double click on the nuke
+and the help text in the status bar are the game's code as before, and the
+harness's `click X Y` on a button still works. When the panel is dragged out
+of the main window its buttons' views move to its own window.
+
+*Colours (`gdi.c`, `plat_syscolor`).* `GetSysColor` gives the system's
+colours where the backend has them: the window background for the button
+face, the text and selection colours, and the thin separator colour for every
+bevel colour (the Mac has no bevels). The game asks for its colours there
+(`COLOR_BTNFACE` for the bars and dialogs, `COLOR_WINDOW`/`COLOR_HIGHLIGHT` in
+the level tree), so its windows follow the system's light or dark look, and a
+window DC's default text and background colours are the system's window text
+and window colours (the game draws "No Level Selected" without setting one).
+When the look changes while the game runs, every window gets
+`WM_SYSCOLORCHANGE` (with the old button face colour in `wParam`, section 5)
+and is drawn again. `LEMMINGS_APPEARANCE=light|dark` fixes the look.
 
 *Menus.* With a system menu bar (macOS), a window's menu goes there: the
-application menu (About, Hide, Quit) and then the game's drop-down menus,
+application menu (About, Settings, Hide, Quit), then the game's drop-down
+menus, a Window menu (Minimize, Zoom, the windows) and Help last. The game's
+menus are arranged as a Mac's: Exit, Set Options and About are the
+application menu's Quit, Settings (Command-comma) and About and are left out
+of File and Help; Help's Contents is "Lemmings Help" and the two items about
+Windows' own help program are left out; a title's "..." is an ellipsis. The game's drop-down menus are
 filled as they open (`WM_INITMENU` and `WM_INITMENUPOPUP` first, so the game
 enables and checks its items), with `WM_MENUSELECT` for the highlighted item
 (the game's status-bar help) and `WM_COMMAND` for the chosen one. Their items
 are disabled while a modal dialog has the frame disabled. Without one, menus
 are drawn in Windows 95 style as a bar at the top of the window, with
 drop-down lists, mouse and keyboard (Alt, mnemonics). Accelerator tables are
-honoured either way; the native menus have no key equivalents of their own.
+honoured either way; the game's menus have no key equivalents of their own
+(the application and Window menus have the usual ones: Command-comma, H, Q, M).
 Message boxes are the system's (`NSAlert`).
 
 **Settings.** The registry is a tree of keys and values in memory, loaded from
@@ -297,8 +344,15 @@ build/native/lemmings --data orig/WINLEMM      # -DLEMMINGS_MACOS_BUNDLE=ON: Lem
   -Iport/include -Isrc/include`, C99 / C++98-compatible as now.
 - Per-module definitions keep the DLLs apart: the renames of section 2.3 and
   each module's own `rand`.
+- The application icon is made at build time by `tools/port/mkicns.py` from
+  the game's own Windows icon (`src/lemmings/res/lemmings.ico`, a 32 x 32
+  yellow tile): the Lemming's head taken off the tile, its pixels enlarged a
+  whole number of times, on a rounded square of the tile's yellow, at every
+  size an `.icns` holds. It goes into the bundle's Resources (and the bundle
+  is signed after that), and beside the plain executable, which sets it as
+  its Dock icon. Dialogs show it too (section 3).
 - Needs CMake ≥ 3.21, Apple's command line tools (clang with Objective-C and
-  the macOS SDK), Python 3 (for `rc2c.py`) and Ninja or make. No other library:
+  the macOS SDK), Python 3 (for `rc2c.py` and `mkicns.py`) and Ninja or make. No other library:
   the executable links only the system's frameworks (AppKit, QuartzCore,
   CoreGraphics, AudioToolbox, CoreAudio). CMake stops with a message on other
   systems until they have a backend.
@@ -314,9 +368,11 @@ build/native/lemmings --data orig/WINLEMM      # -DLEMMINGS_MACOS_BUNDLE=ON: Lem
 
 ## 5. Changes to the game's sources
 
-Rules: only where the 64-bit build cannot compile or work otherwise; each change
-inside `#ifdef PORT_SDL … #else original #endif`, so Visual C++ 2.2 and MinGW
-see exactly what they see on `main`; each listed here.
+Rules: only where the 64-bit build cannot compile or work otherwise, or (the
+last four rows) where the game has to tell the layer something for the
+system's look; each change inside `#ifdef PORT_SDL … #else original #endif`
+(or a plain `#ifdef PORT_SDL … #endif` that adds lines), so Visual C++ 2.2 and
+MinGW see exactly what they see on `main`; each listed here.
 
 Expected (section 2.3): `window.cpp`, `statusbar.cpp`, `frame.cpp`,
 `winmain.cpp` + `winlemm.h` (`g_global28`), `midi.cpp`, `mainwnd.cpp`. More may
@@ -334,6 +390,10 @@ turn up when the sources first compile for arm64.
 | `src/lemmings/mainwnd.cpp`, `frontend.cpp`, `endscreen.cpp` | WinHelp's string argument as `PORT_DWORD` |
 | `src/process/lemmings.cpp` | PROCESS's global `operator new`/`delete` (onto VSMEM) left out: in one executable they would replace the allocator of the whole process, system libraries included. PROCESS never mixes `new`/`delete` with `VSMEM_Allocate`/`VSMEM_Free`. |
 | `src/lemmings/settings.cpp` | no `InstallUninstaller()` (it copies the CD's Windows uninstaller and registers it) |
+| `src/lemmings/icons.cpp` (`Button::Paint`) | for the look, not to compile: `if (port_native_icon(m_hwnd, m_sprite, m_frame, m_bitmap->m_colours, m_id < 10 ? m_count : -1, m_pressed)) return;` first: a system button shows the skill-panel button (section 3) |
+| `src/lemmings/statusbar.cpp` (`DrawStatBar`, `DrawPaneText`) | for the look: `NativeStatBar()` hands the panes' texts to `port_native_status` when the bar or one pane is drawn; if a system view shows them, nothing is drawn |
+| `src/lemmings/window.cpp` (`BaseWndProc`) | for the look: `WM_SYSCOLORCHANGE` sets a window's `m_bkColor` to the new button face colour if it was the old one (`wParam`): the tool windows keep that colour from their constructors |
+| `src/lemmings/about.cpp` (`GetSystemInfoText`) | the system information: `port_native_system` gives the system's name and version and its memory (the layer's `GetVersion` and `GlobalMemoryStatus` stay Windows 95's, 32 bits wide, because the game decides things by them) |
 
 Visual C++ 2.2 notices more than the tokens it compiles, so two lessons:
 
@@ -366,7 +426,7 @@ against a build of `main` (identical apart from timestamps), and a clean
    and player dialogs need the dialog manager, so that comes next.
 4. **Dialogs and menus.** (done) Dialog manager, the standard controls, the menu bar;
    registration, player selection, options, level selection.
-5. **The game.** (done; floating tool windows not tried yet) Level 1 plays: game view with scroll bars, docked icon panel
+5. **The game.** (done; a floating tool window only by a scripted drag) Level 1 plays: game view with scroll bars, docked icon panel
    and map, status bar; the end screen; floating tool windows.
 6. **Sound.** (done) WAV effects, then music (MCI emulation and the Core Audio backend).
 7. **Checks.** (done) The harness; level 1 and the digger run compared with the
@@ -438,7 +498,7 @@ the original game made by `tools/wine/run.sh`:
 | `nuke` | `waitupd 100;click 552 395;waitupd 110;click 552 395;waitupd 120;dbl 552 395` | MATCH `s43-nuke-orig2` (264 updates, to the end of the level); the end screen follows, no crash |
 | `sdig` | the `dig` run with `sclick` (system mouse events through AppKit, hit testing, capture and the docked panel) | MATCH `hd-base-dig` |
 | `skey` | `dig` with the digger chosen by the key `8` (`skey 8`: a system key event, `TranslateMessage`, accelerator table) | MATCH `hd-base-dig` |
-| `smenu` | title screen, `smenu File/Exit` (the macOS menu bar: `WM_INITMENU(POPUP)`, `WM_MENUSELECT`, `WM_COMMAND`) | the game ends, exit code 0 |
+| `smenu` | title screen, `smenu File/Choose Level` and `smenu App/Settings…` (the macOS menu bar: `WM_INITMENU(POPUP)`, `WM_MENUSELECT`, `WM_COMMAND`), `smenu File/Exit` | both dialogs open; File has no Exit; exit code 0 |
 | `squit` | title screen, `smenu App/Quit Lemmings` (the application menu, `WM_CLOSE`) | the game ends, exit code 0 |
 | `zoomclk` | Options, `sclick` on the zoom radio button "2" (a native `NSButton`), OK | the level is drawn at 2x (frame 767 high) |
 | `opts` | Options, `sclick` on Music On and Low Resolution | the controls' states (`ctls`) as `tools/port/expect/opts.txt` |
@@ -447,6 +507,8 @@ the original game made by `tools/wine/run.sh`:
 | `ukey` | Select Player, `skey x` in the name field, `skey Return` | the dialog closes (OK, once), the new player "Testerx" is saved |
 | `okey`, `oret` | Options, `sclick` on Music On, then `skey Escape` / `skey Return` | the dialog closes; Music stays on (Cancel) / goes off (OK) |
 | `scroll` | level 20 (`LEVEL=20`: its scenery spans the whole map), the level view's scroller: a click in the track, the knob dragged to the right end, the left end, the middle | positions (`sbs`) as `expect/scroll.txt`: 198, +80 (one page), 2066 (the end), 0, 1034 (the middle) |
+| `bar` | the `dig` run, `views` at the start, with the digger chosen, and after one was used | MATCH `hd-base-dig`; the skill panel's and status bar's system views show the same as `expect/bar.txt` (13 buttons with their numbers, the digger on and counting 10, then 09; "Out: 07", then "Out: 08") |
+| `look` | level 1 in the light look, `look dark`, `look light` (`syscolor 15`, `syscolor 8` each time) | the button face and window text colours the game draws in are dark's, then light's again; the 13 buttons are still there |
 | `sound` (only when named: it plays out loud) | the nuke with sound and music on (`SOUND=1`), `levels` after it | MATCH; the four effects put 1.4 s of sound out, the music plays without a gap (16.1 of 16.2 s) |
 | `again` | nuke, Replay Level from the end screen, nuke again, replay a third time, `menu Exit` | levels keep running (`StartGame` after `EndGame` with the stale dock list, menus swapped in the menu bar), exit code 0, no crash report |
 
@@ -454,7 +516,9 @@ the original game made by `tools/wine/run.sh`:
 one line each. The runs with system events need the game to stay the active
 application: using the Mac meanwhile can take the keyboard and the first
 click away from a dialog (once, `level` lost its last click that way; ten
-reruns passed); `EXE=` picks the binary (for instance the app bundle's). The
+reruns passed), and with the screen locked the game never becomes active:
+`skey`, `user`, `level` and `ukey` then fail (`lsappinfo front` shows
+`loginwindow`); `EXE=` picks the binary (for instance the app bundle's). The
 `expect/` files were made with the layer's drawn controls
 (`LEMMINGS_NATIVE_CONTROLS=-` still gives those), so the dialog checks compare
 the native controls with them.
@@ -473,7 +537,13 @@ sound above -60 dB, and their peaks (meters in `audio_coreaudio.c` and a
 render notification on the synthesizer's output unit); `sbs` the scroll bars
 (range, position, whose), `sdrag X1 Y1 X2 Y2` a system drag, `sdragsb H|V N`
 the first horizontal or vertical scroll bar's knob dragged to client x or y
-`N`, `wsize W H` the window resized. `LEVEL=N` makes run.sh start level N. A click on a native control posts its
+`N`, `wsize W H` the window resized; `views` what the system labels, the
+skill panel's buttons and the status bar show, `look light|dark|system` the
+application's look and `syscolor N` a system colour as the game gets it;
+`wshots NAME` every window as a PNG (`NAME-0.png` the front one).
+`LEVEL=N` makes run.sh start level N, `ICONDOCKED=0` puts the skill panel in
+the upper dock. Choosing Help in a scripted run logs
+the manual's name and opens nothing. A click on a native control posts its
 button-up with the button-down: the control tracks the mouse in a loop of its
 own until the button comes up, and the harness can't run meanwhile.
 
@@ -489,12 +559,18 @@ Effects off there stops the tune (MCI stop, the synthesizer goes quiet) and
 the nuke clicks play nothing; switching them on again restarts the tune from
 its beginning and the effects play again.
 
-Known differences from the original on Windows: the text drawn by the layer
-(the game's own windows, static text) is its own bitmap font; a top-level
-window's frame and caption are the system's (so the game's window is its
-client size); the menus are in the macOS menu bar, with About and Quit also in
-the application menu; dialog controls are AppKit's (Aqua look, the system
-font, the mini size where a Windows label is too wide for the small one); the
+Known differences from the original on Windows: the text the game itself
+draws (the level tree's rows, "No Level Selected") is the layer's own bitmap
+font; a top-level window's frame and caption are the system's (so the game's
+window is its client size); the menus are in the macOS menu bar, arranged as
+a Mac's (Quit, Settings and About in the application menu and not in File and
+Help, a Window menu, "Lemmings Help"); dialog controls and static text are
+AppKit's (the system font, the mini size where a Windows label is too wide
+for the small one), a dialog's icon is the application's; the skill panel's
+buttons and the status bar are system views (rounded bezels, the chosen
+skill in the accent colour, no sunken boxes), and all of it follows the
+system's light or dark look; the About box names the Mac's system, memory and
+synthesizer; the
 level view's scroll bar is a macOS scroller with a proportional knob, and a
 click in its track moves one page or jumps there as the system setting says
 (Windows always pages); the dock drag outline is not drawn; Help opens the English PDF manual. A logout or restart while the

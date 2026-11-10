@@ -63,7 +63,7 @@ MMRESULT WINAPI midiOutGetDevCapsA(UINT_PTR dev, LPMIDIOUTCAPS caps, UINT size)
     if (!midiOutGetNumDevs())
         return MMSYSERR_BADDEVICEID;
     memset(&c, 0, sizeof c);
-    c.vDriverVersion = 0x100;
+    c.vDriverVersion = midi_backend_version();
     port_strlcpy(c.szPname, midi_backend_name(), sizeof c.szPname);
     c.wTechnology = MOD_SYNTH;
     c.wVoices = 64;

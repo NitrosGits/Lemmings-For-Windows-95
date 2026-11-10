@@ -476,6 +476,33 @@ static void run(char *line)
         port_harness_log("  -> window %ld x %ld", (long)(w->rc.right - w->rc.left), (long)(w->rc.bottom - w->rc.top));
     } else if (w && !strncmp(line, "sbs", 3))
         scrollbars(w, 0, 1);
+    else if (sscanf(line, "look %199s", a) == 1)
+        /* the system's look: light, dark, or system (what the user has set) */
+        port_harness_log("  look %s: %s", a, plat_set_look(a) ? "set" : "not supported");
+    else if (sscanf(line, "syscolor %d", &x) == 1)
+        port_harness_log("  syscolor %d: %06lx", x, (unsigned long)sys_xrgb(x));
+    else if (!strncmp(line, "views", 5)) {
+        Wnd *t;
+
+        /* what the labels, the skill panel and the status bar show, in every window */
+        for (t = port_top; t; t = t->next)
+            if (!t->destroyed && t->plat)
+                peer_log_views(t);
+    } else if (sscanf(line, "wshots %190s", a) == 1) {
+        Wnd *t;
+        int i = 0;
+
+        /* every window as the system shows it: NAME-0.png (the front one), NAME-1.png, ... */
+        for (t = port_top; t; t = t->next)
+            if (!t->destroyed && t->plat && wnd_visible(t)) {
+                char fn[1300];
+
+                snprintf(fn, sizeof fn, "%s/%s-%d.png", g_dir, a, i++);
+                port_harness_log("  wshots %s-%d (%s, %ld x %ld): %s", a, i - 1, t->cls->name,
+                                 (long)(t->rc.right - t->rc.left), (long)(t->rc.bottom - t->rc.top),
+                                 plat_window_snapshot(t->plat, fn) ? "written" : "not supported");
+            }
+    }
     else if (w && w->plat && sscanf(line, "sdrag %d %d %d %d", &x, &y, &g_sx, &g_sy) == 4) {
         RECT r;
 

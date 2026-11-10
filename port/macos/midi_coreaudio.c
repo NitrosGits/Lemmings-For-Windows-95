@@ -95,9 +95,47 @@ int midi_backend_available(void)
     return 1;
 }
 
+/* the synthesizer the music plays on, as the system names it */
+static AudioComponent synth(void)
+{
+    AudioComponentDescription d = {kAudioUnitType_MusicDevice, kAudioUnitSubType_DLSSynth,
+                                   kAudioUnitManufacturer_Apple, 0, 0};
+
+    return AudioComponentFindNext(NULL, &d);
+}
+
 const char *midi_backend_name(void)
 {
-    return "Apple DLS Synth";
+    static char name[64];
+    AudioComponent c = synth();
+    CFStringRef s = NULL;
+
+    if (!name[0]) {
+        snprintf(name, sizeof name, "Apple DLS Synth");
+        if (c && AudioComponentCopyName(c, &s) == noErr && s) {
+            char full[64], *p;
+
+            /* "Apple: DLSMusicDevice" */
+            if (CFStringGetCString(s, full, sizeof full, kCFStringEncodingASCII)) {
+                while ((p = strchr(full, ':')))
+                    memmove(p, p + 1, strlen(p));
+                snprintf(name, sizeof name, "%s", full);
+            }
+            CFRelease(s);
+        }
+    }
+    return name;
+}
+
+/* its version as a driver's: major in the high byte, minor in the low */
+unsigned midi_backend_version(void)
+{
+    AudioComponent c = synth();
+    UInt32 v = 0;
+
+    if (!c || AudioComponentGetVersion(c, &v) != noErr || !v)
+        return 0x100;
+    return (v >> 16 & 0xff) << 8 | (v >> 8 & 0xff);
 }
 
 void *midi_backend_open(const char *path)

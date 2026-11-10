@@ -16,6 +16,17 @@ target_include_directories(winlayer PRIVATE ${CMAKE_SOURCE_DIR}/port/src)
 target_link_libraries(winlayer PUBLIC "-framework AppKit" "-framework QuartzCore" "-framework CoreGraphics"
                                       "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation")
 
+# The application icon, made from the game's own Windows icon (a rounded
+# square with the Lemming's head): in the bundle's Resources, and beside the
+# plain executable, which shows it in the Dock too.
+set(LEMMINGS_ICNS ${CMAKE_BINARY_DIR}/Lemmings.icns)
+add_custom_command(OUTPUT ${LEMMINGS_ICNS}
+  COMMAND Python3::Interpreter ${CMAKE_SOURCE_DIR}/tools/port/mkicns.py
+          ${CMAKE_SOURCE_DIR}/src/lemmings/res/lemmings.ico ${LEMMINGS_ICNS}
+  DEPENDS ${CMAKE_SOURCE_DIR}/tools/port/mkicns.py ${CMAKE_SOURCE_DIR}/src/lemmings/res/lemmings.ico
+  VERBATIM)
+add_custom_target(lemmings_icon DEPENDS ${LEMMINGS_ICNS})
+
 function(lemmings_macos_target target)
   if(LEMMINGS_MACOS_BUNDLE)
     set_target_properties(${target} PROPERTIES
@@ -26,9 +37,18 @@ function(lemmings_macos_target target)
       MACOSX_BUNDLE_GUI_IDENTIFIER io.github.nitrosgits.lemmings-win95
       MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
       MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION})
-    # ad-hoc signed, as Apple silicon wants every executable signed
-    add_custom_command(TARGET ${target} POST_BUILD
-      COMMAND codesign --force --sign - $<TARGET_FILE:${target}>
+    # the icon into the bundle, then the bundle signed (ad hoc: Apple silicon
+    # wants every executable signed, and the signature seals the Resources)
+    set(app $<TARGET_BUNDLE_DIR:${target}>)
+    add_custom_command(OUTPUT ${CMAKE_BINARY_DIR}/bundle.stamp
+      COMMAND ${CMAKE_COMMAND} -E make_directory ${app}/Contents/Resources
+      COMMAND ${CMAKE_COMMAND} -E copy ${LEMMINGS_ICNS} ${app}/Contents/Resources/Lemmings.icns
+      COMMAND codesign --force --sign - ${app}
+      COMMAND ${CMAKE_COMMAND} -E touch ${CMAKE_BINARY_DIR}/bundle.stamp
+      DEPENDS ${target} ${LEMMINGS_ICNS}
       VERBATIM)
+    add_custom_target(lemmings_bundle ALL DEPENDS ${CMAKE_BINARY_DIR}/bundle.stamp)
+  else()
+    add_dependencies(${target} lemmings_icon)
   endif()
 endfunction()

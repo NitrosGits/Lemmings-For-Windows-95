@@ -13,6 +13,11 @@ const char *midi_backend_name(void)
     return "none";
 }
 
+unsigned midi_backend_version(void)
+{
+    return 0x100;
+}
+
 void *midi_backend_open(const char *hostPath)
 {
     (void)hostPath;

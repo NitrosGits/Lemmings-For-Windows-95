@@ -89,6 +89,12 @@ LRESULT CALLBACK BaseWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             ExtTextOut(hdc, 0, 0, ETO_OPAQUE, &rect, "", 0, 0);
         }
         return 0;
+#ifdef PORT_SDL                 /* the native build: the system's colours follow its light or dark look; */
+    case WM_SYSCOLORCHANGE:     /* wParam is the button face colour until now (PORTING.md) */
+        if (w->m_bkColor == (COLORREF)wParam)
+            w->m_bkColor = GetSysColor(COLOR_BTNFACE);
+        break;
+#endif
     case WM_SETCURSOR:
         {
             POINT pt;

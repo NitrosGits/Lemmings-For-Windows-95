@@ -26,6 +26,8 @@ void plat_sleep(uint32_t ms);
 char *plat_pref_dir(void);                  /* malloc'd, ends in '/' */
 char *plat_base_dir(void);                  /* the program's folder, ends in '/' */
 uint64_t plat_ram_bytes(void);
+uint64_t plat_ram_available(void);          /* what programs could have now; 0 if not known */
+int plat_os_name(char *out, int size);      /* "macOS 15.1 (24B83)"; 0 if not known */
 int plat_open_url(const char *url);
 void plat_usable_bounds(int *x, int *y, int *w, int *h);
 /* a message box: type as MessageBox's; returns IDOK, IDCANCEL, IDYES or IDNO */
@@ -56,6 +58,14 @@ int plat_window_is_key(PlatWindow *p);
 /* what the window shows (its framebuffer and any native controls) as a PNG */
 int plat_window_snapshot(PlatWindow *p, const char *path);
 int plat_app_active(void);
+
+/* ---- The system's look (macOS) ----
+ * The colour the system gives a COLOR_* index now (light or dark), as
+ * 0x00RRGGBB; 0 if it has none (the layer then keeps Windows 95's). When the
+ * look changes the backend calls input_syscolors_changed(). */
+int plat_syscolor(int index, uint32_t *xrgb);
+/* the harness: the look by name ("light", "dark", "system"); 0 if there is no such thing */
+int plat_set_look(const char *name);
 
 /* ---- Events and input state ---- */
 int plat_pump(int timeout_ms);              /* OS events into input_* calls; returns how many */
@@ -94,7 +104,14 @@ int plat_menu_choose(const char *path);
  * peer.c shows its state in the view, and the view reports what the user does
  * (input_control*). Frames are in the top-level window's framebuffer. */
 typedef struct PlatControl PlatControl;
-enum { PC_BUTTON, PC_DEFBUTTON, PC_CHECKBOX, PC_RADIO, PC_GROUPBOX, PC_EDIT, PC_LIST, PC_LIST_OWNERDRAW };
+enum {
+    PC_BUTTON, PC_DEFBUTTON, PC_CHECKBOX, PC_RADIO, PC_GROUPBOX, PC_EDIT, PC_LIST, PC_LIST_OWNERDRAW,
+    PC_LABEL, PC_LABEL_CENTER, PC_LABEL_RIGHT,  /* static text: wrapped lines, left, centred, right */
+    PC_LABEL_LINE,                              /* one line, left */
+    PC_ICON,                                    /* a dialog's picture of the program: its icon */
+    PC_ICONBUTTON,                              /* the game's skill panel: a picture, a number, on or off */
+    PC_STATUSBAR                                /* the game's status bar: a message and counters */
+};
 PlatControl *plat_control_create(PlatWindow *top, uint32_t hwnd, int kind);  /* NULL: the layer draws it */
 void plat_control_destroy(PlatControl *c);
 void plat_control_frame(PlatControl *c, int x, int y, int w, int h, int visible, int enabled);
@@ -104,6 +121,13 @@ void plat_control_focus(PlatWindow *top, PlatControl *c);      /* NULL: the wind
 void plat_list_reload(PlatControl *c, int rows, int rowHeight);
 void plat_list_select(PlatControl *c, int row);               /* -1: none */
 void plat_list_top(PlatControl *c, int row);                  /* the first row shown */
+/* an icon button's face: its picture (w x h pixels, 0xAARRGGBB, not premultiplied; NULL keeps the
+   one it has), its number ("" for none) and whether it is on. Shown only: clicks go to the layer. */
+void plat_iconbutton_set(PlatControl *c, const uint32_t *argb, int w, int h, const char *count, int on);
+/* a status bar's parts from the left: the first takes the room the others leave */
+void plat_statusbar_set(PlatControl *c, int n, const char *const *utf8);
+/* the harness: what a label, icon button or status bar shows, as text */
+void plat_control_describe(PlatControl *c, char *out, int size);
 /* a window's scroll bar as the system's scroller (frame, visible and enabled
    through plat_control_frame); value and proportion (the knob) 0..1 */
 PlatControl *plat_scroller_create(PlatWindow *top, uint32_t hwnd, int vertical);
@@ -136,6 +160,7 @@ void input_window_exposed(struct Wnd *w);
 void input_app_deactivated(void);
 void input_quit(void);
 void input_command(int id);                 /* a menu command to the main window */
+void input_syscolors_changed(void);         /* the system's colours changed (light, dark) */
 void input_tracking_idle(void);             /* now and then while the system tracks a menu or drag */
 
 /* ---- What native controls report and ask (peer.c) ---- */

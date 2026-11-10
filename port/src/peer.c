@@ -7,9 +7,15 @@
  * shows the layer's state in the views before each present; what the user
  * does in a view comes back through input_control*() as the same messages
  * the drawn control would have handled (BM_CLICK, LB_SETCURSEL and
- * LBN_SELCHANGE, WM_SETTEXT and EN_CHANGE, dialog keys). Static text and the
- * game's own control classes stay drawn: they rely on WM_CTLCOLOR* and the
- * game's backgrounds.
+ * LBN_SELCHANGE, WM_SETTEXT and EN_CHANGE, dialog keys). Static text (and the
+ * level dialog's own text class) is a system label, shown only. Static icons
+ * and the game's picture controls stay drawn.
+ *
+ * Two of the game's own windows are system views too, because the game says
+ * so when it paints them (port_native_icon, port_native_status: #ifdef
+ * PORT_SDL in src/lemmings): the skill panel's buttons and the status bar.
+ * They are shown only - the mouse still goes to the game's windows under
+ * them, so pressing, holding and the double click on the nuke stay the game's.
  *
  * Any window's scroll bars (WS_HSCROLL, WS_VSCROLL: the game view's) are the
  * system's scrollers the same way: the layer keeps range and position, the
@@ -24,11 +30,14 @@
 struct Peer {
     PlatControl *c;
     int kind;
+    Wnd *top;               /* the top-level window its view is in */
+    int ownPaint;           /* a class of the game's: its WM_PAINT is not called */
+    int shown;              /* an icon button, the status bar: what it shows was set */
     /* what the view shows now */
     RECT rc;
     int visible, enabled;
     char text[512];
-    int sel, top, serial, rowH, rows;
+    int sel, top_, serial, rowH, rows;  /* a list: selection, first row shown, contents */
     int redraw;             /* an owner-drawn list was invalidated */
 };
 
@@ -61,7 +70,32 @@ static int kind_of(Wnd *w)
         return (w->style & 0x0004L) ? -1 : PC_EDIT;    /* not ES_MULTILINE */
     if (!strcasecmp(w->cls->name, "ListBox"))
         return (w->style & (LBS_OWNERDRAWFIXED | LBS_OWNERDRAWVARIABLE)) ? PC_LIST_OWNERDRAW : PC_LIST;
+    if (!strcasecmp(w->cls->name, "Static")) {
+        switch (w->style & 0x1f) {
+        case SS_LEFT:
+            return PC_LABEL;
+        case SS_CENTER:
+            return PC_LABEL_CENTER;
+        case SS_RIGHT:
+            return PC_LABEL_RIGHT;
+        case SS_SIMPLE:
+        case SS_LEFTNOWORDWRAP:
+            return PC_LABEL_LINE;
+        case SS_ICON:
+            return PC_ICON; /* the program's icon, as the system shows it */
+        }
+        return -1;          /* a frame, a filled box: drawn */
+    }
+    /* the level dialog's centred text (src/lemmings/levelsel.cpp) */
+    if (!strcasecmp(w->cls->name, "IconTextClass"))
+        return PC_LABEL_CENTER;
     return -1;
+}
+
+/* static text or a static icon: shown by its view, on the dialog's background */
+static int is_label(const struct Peer *p)
+{
+    return p->kind >= PC_LABEL && p->kind <= PC_ICON;
 }
 
 static int is_list(const struct Peer *p)
@@ -132,11 +166,35 @@ static void notify(Wnd *w, int code)
 
 /* ---- The layer's state into the view ---- */
 
+static PlatControl *view_new(Wnd *w, struct Peer *p)
+{
+    p->top = wnd_toplevel(w);
+    p->visible = p->enabled = -1;
+    p->sel = -2;
+    p->top_ = p->serial = p->rowH = p->rows = -1;
+    p->text[0] = 1;         /* not shown yet */
+    p->text[1] = 0;
+    p->shown = 0;
+    SetRectEmpty(&p->rc);
+    return p->top->plat ? plat_control_create(p->top->plat, H32(w->h), p->kind) : NULL;
+}
+
 static void sync_one(Wnd *w)
 {
     struct Peer *p = w->peer;
     int visible = wnd_visible(w), enabled = !(w->style & WS_DISABLED);
     RECT r;
+
+    if (p->top != wnd_toplevel(w)) {
+        /* it moved to another top-level window (a tool window docked or
+           undocked): its view goes there */
+        if (p->c)
+            plat_control_destroy(p->c);
+        p->c = view_new(w, p);
+        wnd_invalidate(w, NULL, 1);
+    }
+    if (!p->c)
+        return;
 
     wnd_window_fb(w, &r);
     if (!EqualRect(&r, &p->rc) || visible != p->visible || enabled != p->enabled) {
@@ -145,6 +203,8 @@ static void sync_one(Wnd *w)
         p->visible = visible;
         p->enabled = enabled;
     }
+    if (p->kind == PC_ICONBUTTON || p->kind == PC_STATUSBAR || p->kind == PC_ICON)
+        return;             /* the game sets what they show when it paints them; the icon is the program's */
     if (!is_list(p)) {
         char t[512], u[512];
 
@@ -167,7 +227,7 @@ static void sync_one(Wnd *w)
             p->redraw = 0;
             plat_list_reload(p->c, rows, rowH);
             p->sel = -2;
-            p->top = -1;
+            p->top_ = -1;
         }
         sel = (int)SendMessageA(w->h, LB_GETCURSEL, 0, 0);
         if (sel != p->sel) {
@@ -175,10 +235,21 @@ static void sync_one(Wnd *w)
             p->sel = sel;
         }
         top = (int)SendMessageA(w->h, LB_GETTOPINDEX, 0, 0);
-        if (top != p->top) {
+        if (top != p->top_) {
             plat_list_top(p->c, top);
-            p->top = top;
+            p->top_ = top;
         }
+    }
+}
+
+static void redraw_lists(Wnd *w)
+{
+    Wnd *c;
+
+    for (c = w->child; c; c = c->next) {
+        if (c->peer && c->peer->kind == PC_LIST_OWNERDRAW)
+            c->peer->redraw = 1;
+        redraw_lists(c);
     }
 }
 
@@ -297,33 +368,46 @@ void peer_sync_all(void)
     for (t = port_top; t; t = t->next) {
         if (t->destroyed || !t->plat)
             continue;
-        if (t->dlg)
-            sync_tree(t);
+        sync_tree(t);
         sync_scrollbars(t, t);
     }
 }
 
+/* the system's colours changed: what the game drew for a view is drawn again */
+void peer_colors_changed(void)
+{
+    Wnd *t;
+
+    for (t = port_top; t; t = t->next)
+        if (!t->destroyed)
+            redraw_lists(t);
+}
+
+static struct Peer *peer_new(Wnd *w, int kind)
+{
+    struct Peer *p = calloc(1, sizeof *p);
+
+    p->kind = kind;
+    p->c = view_new(w, p);
+    if (!p->c) {
+        free(p);
+        return NULL;
+    }
+    w->peer = p;
+    return p;
+}
+
 void peer_create(Wnd *w)
 {
-    Wnd *top = wnd_toplevel(w);
     int kind = kind_of(w);
-    PlatControl *c;
     struct Peer *p;
 
-    if (kind < 0 || !top->plat || w->peer)
+    if (kind < 0 || w->peer)
         return;
-    c = plat_control_create(top->plat, H32(w->h), kind);
-    if (!c)
+    p = peer_new(w, kind);
+    if (!p)
         return;
-    p = calloc(1, sizeof *p);
-    p->c = c;
-    p->kind = kind;
-    p->visible = p->enabled = -1;
-    p->sel = -2;
-    p->top = p->serial = p->rowH = p->rows = -1;
-    p->text[0] = 1;         /* not shown yet */
-    p->text[1] = 0;
-    w->peer = p;
+    p->ownPaint = is_label(p) && strcasecmp(w->cls->name, "Static") != 0;
     sync_one(w);
 }
 
@@ -331,22 +415,44 @@ void peer_destroy(Wnd *w)
 {
     if (!w->peer)
         return;
-    plat_control_destroy(w->peer->c);
+    if (w->peer->c)
+        plat_control_destroy(w->peer->c);
     free(w->peer);
     w->peer = NULL;
+}
+
+/* the window's own background under a view that shows only a part of it */
+static void fill_under(Wnd *w, HDC hdc)
+{
+    RECT r;
+    int br = 0;
+
+    GetClientRect(w->h, &r);
+    if (w->parent && w->parent->dlg)
+        ctl_color(w, WM_CTLCOLORSTATIC, hdc, &br);
+    FillRect(hdc, &r, br ? (HBRUSH)(uintptr_t)br : GetSysColorBrush(COLOR_BTNFACE));
 }
 
 int peer_paint(Wnd *w)
 {
     PAINTSTRUCT ps;
+    HDC hdc;
 
-    if (!w->peer)
+    if (!w->peer || !w->peer->c)
         return 0;
-    BeginPaint(w->h, &ps);
+    hdc = BeginPaint(w->h, &ps);
+    if (is_label(w->peer))
+        fill_under(w, hdc);
     EndPaint(w->h, &ps);
     if (w->peer->kind == PC_LIST_OWNERDRAW)
         w->peer->redraw = 1;    /* the game draws its rows: draw them again */
     return 1;
+}
+
+/* WM_PAINT for a window of the game's whose view shows all of it */
+int peer_paints(Wnd *w)
+{
+    return w->peer && w->peer->ownPaint && peer_paint(w);
 }
 
 /* the layer's focus moved: the keyboard goes to the view, or to the window */
@@ -367,7 +473,7 @@ static Wnd *peer_wnd(uint32_t hwnd)
 {
     Wnd *w = wnd_get((HWND)(uintptr_t)hwnd);
 
-    return w && !w->destroyed && w->peer ? w : NULL;
+    return w && !w->destroyed && w->peer && w->peer->c ? w : NULL;
 }
 
 void input_control(uint32_t hwnd, int event, int arg)
@@ -397,7 +503,7 @@ void input_control(uint32_t hwnd, int event, int arg)
     case PCE_TOP:
         SendMessageA(w->h, LB_SETTOPINDEX, (WPARAM)arg, 0);
         if (peer_wnd(hwnd)) {
-            w->peer->top = (int)SendMessageA(w->h, LB_GETTOPINDEX, 0, 0);
+            w->peer->top_ = (int)SendMessageA(w->h, LB_GETTOPINDEX, 0, 0);
             ValidateRect(w->h, NULL);   /* the view scrolled itself */
         }
         return;
@@ -495,4 +601,118 @@ int list_native_draw(uint32_t hwnd, int row, int width, int height, uint32_t *xr
     DeleteObject(bm);
     DeleteDC(dc);
     return 1;
+}
+
+/* ---- What the game tells (windows.h): its skill panel and status bar ---- */
+
+/* the view of a window of the game's that it is painting now; made the first time */
+static struct Peer *game_peer(HWND hwnd, int kind)
+{
+    Wnd *w = wnd_get(hwnd);
+    HDC hdc;
+
+    if (!w || w->destroyed)
+        return NULL;
+    if (!w->peer && !peer_new(w, kind))
+        return NULL;
+    if (w->peer->kind != kind || !w->peer->c)
+        return NULL;
+    /* the view shows the face; under it the bar's own background */
+    hdc = GetDC(hwnd);
+    fill_under(w, hdc);
+    ReleaseDC(hwnd, hdc);
+    return w->peer;
+}
+
+/* one frame of an SRLE sprite (src/lemmings/icons.cpp, Button::DrawSprite) as
+   0xAARRGGBB pixels, clear where the sprite has none */
+static void sprite_frame(const BYTE *spr, int frame, const RGBQUAD *col, uint32_t *px, int w, int h)
+{
+    const BYTE *f, *src;
+    int x0, y0, rows, j;
+
+    memset(px, 0, (size_t)w * (size_t)h * 4);
+    if (!spr || memcmp(spr, "SRLE", 4) || frame < 0 || frame >= *(const WORD *)(spr + 4))
+        return;
+    f = spr + *(const DWORD *)(spr + 6 + frame * 4);
+    x0 = ((const WORD *)f)[0];
+    y0 = ((const WORD *)f)[1];
+    rows = ((const WORD *)f)[3];
+    src = f + 12;
+    for (j = 0; j < rows; j++) {
+        int x = x0, y = y0 + j;
+        BYTE c;
+
+        do {
+            c = *src++;
+            if (c < 0x80)
+                x += c;
+            else if (c > 0x80) {
+                for (c &= 0x7f; c; c--, x++, src++)
+                    if (x >= 0 && x < w && y >= 0 && y < h)
+                        px[y * w + x] = 0xff000000u | (uint32_t)col[*src].rgbRed << 16 |
+                                        (uint32_t)col[*src].rgbGreen << 8 | col[*src].rgbBlue;
+                c = 0;
+            }
+        } while (c != 0x80);
+    }
+}
+
+int port_native_icon(HWND hwnd, const BYTE *sprite, int frame, const RGBQUAD *colours, int count, int pressed)
+{
+    enum { W = 34, H = 42 };
+    struct Peer *p = game_peer(hwnd, PC_ICONBUTTON);
+    uint32_t px[W * H];
+    char num[16] = "";
+
+    if (!p)
+        return 0;
+    if (count > 0)              /* none left, or a button without a number: blank, as the game has it */
+        snprintf(num, sizeof num, "%02d", count % 100);
+    sprite_frame(sprite, frame, colours, px, W, H);
+    plat_iconbutton_set(p->c, px, W, H, num, pressed != 0);
+    p->shown = 1;
+    return 1;
+}
+
+int port_native_status(HWND hwnd, const char *const *texts, int n)
+{
+    struct Peer *p = game_peer(hwnd, PC_STATUSBAR);
+    char u[8][256];
+    const char *parts[8];
+    int i;
+
+    if (!p)
+        return 0;
+    if (n > 8)
+        n = 8;
+    for (i = 0; i < n; i++) {   /* the game's panes run from the right */
+        port_utf8(texts[n - 1 - i], u[i], sizeof u[i]);
+        parts[i] = u[i];
+    }
+    plat_statusbar_set(p->c, n, parts);
+    p->shown = 1;
+    return 1;
+}
+
+/* the harness: what the game's views show ("views") */
+void peer_log_views(Wnd *w)
+{
+    Wnd *c;
+
+    for (c = w->child; c; c = c->next) {
+        if (c->peer && c->peer->c && (c->peer->kind == PC_ICONBUTTON || c->peer->kind == PC_STATUSBAR || is_label(c->peer))) {
+            char t[600];
+            RECT r;
+
+            plat_control_describe(c->peer->c, t, sizeof t);
+            wnd_window_fb(c, &r);
+            if (c->peer->kind == PC_ICON)
+                snprintf(t, sizeof t, "%ld x %ld", (long)(r.right - r.left), (long)(r.bottom - r.top));
+            port_harness_log("  view %s%s: %s", c->peer->kind == PC_ICONBUTTON ? "icon" : c->peer->kind == PC_STATUSBAR
+                             ? "status" : c->peer->kind == PC_ICON ? "picture" : "label",
+                             wnd_visible(c) ? "" : " (hidden)", t);
+        }
+        peer_log_views(c);
+    }
 }

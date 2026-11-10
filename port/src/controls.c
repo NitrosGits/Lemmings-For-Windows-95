@@ -614,7 +614,15 @@ static LRESULT CALLBACK StaticProc(HWND h, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
     type = (int)(w->style & 0x1f);
     switch (msg) {
+    case WM_CREATE:
+        /* an icon is shown whole: the control takes its size, whatever the dialog gave it */
+        if (type == SS_ICON)
+            SetWindowPos(h, NULL, 0, 0, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON),
+                         SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        break;
     case WM_PAINT:
+        if (peer_paint(w))      /* its text is a system label, its icon the system's picture */
+            return 0;
         {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(h, &ps);

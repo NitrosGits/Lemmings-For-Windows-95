@@ -134,9 +134,28 @@ void StatBarPaint(HWND hwnd)
 /* Symbol padding (see docs/DECOMP.md): the original had more declarations here. */
 extern int pad_drawpanetext0, pad_drawpanetext1, pad_drawpanetext2, pad_drawpanetext3, pad_drawpanetext4, pad_drawpanetext5, pad_drawpanetext6, pad_drawpanetext7, pad_drawpanetext8;
 
+#ifdef PORT_SDL
+/* The native build: a system view shows the bar, told its panes' texts
+   whenever the bar or one pane is drawn (PORTING.md). 1 if it does. */
+static int NativeStatBar(HWND hwnd, STATBAR *bar)
+{
+    const char *texts[8];
+    int n = 0;
+    PANE *pane;
+
+    for (pane = bar->panes; pane->text && n < 8; pane++)
+        texts[n++] = pane->text;
+    return port_native_status(hwnd, texts, n);
+}
+#endif
+
 /* 0x404210 */
 void DrawPaneText(HDC hdc, STATBAR *bar, PANE *pane)
 {
+#ifdef PORT_SDL
+    if (g_hStatus && NativeStatBar(g_hStatus, bar))
+        return;
+#endif
     HFONT old = (HFONT)SelectObject(hdc, bar->font);
     RECT r;
 
@@ -270,6 +289,10 @@ void DrawStatBar(HWND hwnd, HDC hdc, STATBAR *bar)
     RECT r;
     PANE *pane;
 
+#ifdef PORT_SDL
+    if (NativeStatBar(hwnd, bar))
+        return;
+#endif
     GetClientRect(hwnd, &r);
     r.top = r.bottom - bar->height;
     r.left = r.right;

@@ -13,6 +13,8 @@
 #include <sys/stat.h>
 
 #include "cocoa_win32.h"
+#include <mach/mach.h>
+#include <sys/sysctl.h>
 #include "keycodes.h"
 
 static NSMutableArray *g_injected;          /* the harness's events' timestamps */
@@ -356,14 +358,158 @@ static PortAppDelegate *g_appDelegate;
 {
     input_command(320);             /* Help > About Lemmings */
 }
+- (void)settings:(id)sender
+{
+    input_command(375);             /* File > Set Options */
+}
 @end
+
+/* ---- The system's colours ----
+ * The game and the layer draw in them (dialogs, the bars round the level), so
+ * a window looks the same where they drew and where a system view did, light
+ * or dark. LEMMINGS_APPEARANCE=light|dark fixes the look (the default follows
+ * the system); with LEMMINGS_NATIVE_CONTROLS set and no 'c' in it the layer
+ * keeps Windows 95's colours and the application the light look. */
+
+int cocoa_native(char kind)
+{
+    const char *only = getenv("LEMMINGS_NATIVE_CONTROLS");
+
+    return !only || strchr(only, kind) != NULL;
+}
+
+static NSColor *sys_color(int index)
+{
+    switch (index) {
+    case COLOR_SCROLLBAR:
+    case COLOR_MENU:
+    case COLOR_ACTIVEBORDER:
+    case COLOR_INACTIVEBORDER:
+    case COLOR_BTNFACE:
+    case COLOR_3DLIGHT:
+        return NSColor.windowBackgroundColor;
+    case COLOR_APPWORKSPACE:
+        return NSColor.underPageBackgroundColor;
+    case COLOR_WINDOW:
+        return NSColor.textBackgroundColor;
+    case COLOR_WINDOWTEXT:
+        return NSColor.textColor;
+    case COLOR_MENUTEXT:
+    case COLOR_BTNTEXT:
+        return NSColor.controlTextColor;
+    case COLOR_GRAYTEXT:
+        return NSColor.disabledControlTextColor;
+    case COLOR_HIGHLIGHT:
+        return NSColor.selectedContentBackgroundColor;
+    case COLOR_HIGHLIGHTTEXT:
+        return NSColor.alternateSelectedControlTextColor;
+    case COLOR_WINDOWFRAME:         /* no bevels here: every edge is the thin separator line */
+    case COLOR_BTNSHADOW:
+    case COLOR_BTNHIGHLIGHT:
+    case COLOR_3DDKSHADOW:
+        return NSColor.separatorColor;
+    }
+    return nil;
+}
+
+int plat_syscolor(int index, uint32_t *xrgb)
+{
+    __block int ok = 0;
+
+    if (!cocoa_native('c'))
+        return 0;
+    @autoreleasepool {
+        [NSApp.effectiveAppearance performAsCurrentDrawingAppearance:^{
+            NSColorSpace *cs = NSColorSpace.sRGBColorSpace;
+            NSColor *c = [sys_color(index) colorUsingColorSpace:cs];
+            NSColor *bg = [NSColor.windowBackgroundColor colorUsingColorSpace:cs];
+            CGFloat a;
+
+            if (!c || !bg)
+                return;
+            /* a translucent colour as it looks on a window */
+            a = c.alphaComponent;
+            *xrgb = (uint32_t)lround((c.redComponent * a + bg.redComponent * (1 - a)) * 255) << 16 |
+                    (uint32_t)lround((c.greenComponent * a + bg.greenComponent * (1 - a)) * 255) << 8 |
+                    (uint32_t)lround((c.blueComponent * a + bg.blueComponent * (1 - a)) * 255);
+            ok = 1;
+        }];
+    }
+    return ok;
+}
+
+int plat_set_look(const char *name)
+{
+    if (!cocoa_native('c'))
+        return 0;
+    NSApp.appearance = !strcmp(name, "light")  ? [NSAppearance appearanceNamed:NSAppearanceNameAqua]
+                       : !strcmp(name, "dark") ? [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua] : nil;
+    return 1;
+}
+
+static NSImage *g_appIcon;
+
+NSImage *cocoa_app_icon(void)
+{
+    static NSImage *shape;
+    NSImage *src = g_appIcon;
+
+    if (!shape && src)
+        shape = [NSImage imageWithSize:NSMakeSize(64, 64) flipped:NO drawingHandler:^BOOL(NSRect dst) {
+            NSSize s = src.size;
+            CGFloat m = s.width * 100 / 1024;       /* the shape is 824 of the canvas's 1024 */
+
+            [src drawInRect:dst fromRect:NSMakeRect(m, m, s.width - 2 * m, s.height - 2 * m)
+                  operation:NSCompositingOperationSourceOver fraction:1];
+            return YES;
+        }];
+    return shape;
+}
+
+@interface PortLook : NSObject
+@end
+
+@implementation PortLook
+- (void)observeValueForKeyPath:(NSString *)keyPath ofObject:(id)object change:(NSDictionary *)change
+                       context:(void *)context
+{
+    input_syscolors_changed();
+}
+- (void)colorsChanged:(NSNotification *)n
+{
+    input_syscolors_changed();
+}
+@end
+
+static PortLook *g_look;
 
 void plat_init(void)
 {
     @autoreleasepool {
+        const char *look = getenv("LEMMINGS_APPEARANCE");
+
         [NSApplication sharedApplication];
         [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
-        NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        if (!cocoa_native('c'))
+            NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        else if (look)
+            plat_set_look(look);
+        {
+            /* the icon the build made (tools/port/mkicns.py): in the bundle, or
+               beside the plain executable, which has to be told of it */
+            NSString *icns = [NSBundle.mainBundle pathForResource:@"Lemmings" ofType:@"icns"];
+
+            if (!NSBundle.mainBundle.bundleIdentifier)
+                icns = [[NSBundle.mainBundle.executablePath stringByDeletingLastPathComponent]
+                    stringByAppendingPathComponent:@"Lemmings.icns"];
+            g_appIcon = icns ? [[NSImage alloc] initWithContentsOfFile:icns] : nil;
+            if (g_appIcon && !NSBundle.mainBundle.bundleIdentifier)
+                NSApp.applicationIconImage = g_appIcon;
+        }
+        g_look = [PortLook new];
+        [NSApp addObserver:g_look forKeyPath:@"effectiveAppearance" options:0 context:NULL];
+        [[NSNotificationCenter defaultCenter] addObserver:g_look selector:@selector(colorsChanged:)
+                                                     name:NSSystemColorsDidChangeNotification object:nil];
         g_appDelegate = [PortAppDelegate new];
         NSApp.delegate = g_appDelegate;
         g_delegate = [PortWindowDelegate new];
@@ -435,6 +581,41 @@ char *plat_base_dir(void)
 uint64_t plat_ram_bytes(void)
 {
     return [NSProcessInfo processInfo].physicalMemory;
+}
+
+/* free pages and those the system gives up at once (cached files, purgeable) */
+uint64_t plat_ram_available(void)
+{
+    vm_statistics64_data_t vm;
+    mach_msg_type_number_t n = HOST_VM_INFO64_COUNT;
+    vm_size_t page = 0;
+
+    if (host_page_size(mach_host_self(), &page) != KERN_SUCCESS ||
+        host_statistics64(mach_host_self(), HOST_VM_INFO64, (host_info64_t)&vm, &n) != KERN_SUCCESS)
+        return 0;
+    return ((uint64_t)vm.free_count + vm.inactive_count + vm.purgeable_count) * page;
+}
+
+int plat_os_name(char *out, int size)
+{
+    @autoreleasepool {
+        NSOperatingSystemVersion v = NSProcessInfo.processInfo.operatingSystemVersion;
+        char build[32] = "";
+        size_t len = sizeof build;
+
+        sysctlbyname("kern.osversion", build, &len, NULL, 0);
+        if (v.patchVersion)
+            snprintf(out, (size_t)size, "macOS %ld.%ld.%ld", (long)v.majorVersion, (long)v.minorVersion,
+                     (long)v.patchVersion);
+        else
+            snprintf(out, (size_t)size, "macOS %ld.%ld", (long)v.majorVersion, (long)v.minorVersion);
+        if (build[0] && strlen(out) + strlen(build) + 4 < (size_t)size) {
+            strcat(out, " (");
+            strcat(out, build);
+            strcat(out, ")");
+        }
+        return 1;
+    }
 }
 
 int plat_open_url(const char *url)

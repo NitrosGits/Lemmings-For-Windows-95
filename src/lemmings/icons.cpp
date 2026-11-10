@@ -430,6 +430,10 @@ void Button::Paint(HDC hdc, RECT *rect)
     HBRUSH dark;
     HBRUSH t;
 
+#ifdef PORT_SDL                 /* the native build: a system control shows the button (PORTING.md) */
+    if (port_native_icon(m_hwnd, m_sprite, m_frame, m_bitmap->m_colours, m_id < 10 ? m_count : -1, m_pressed))
+        return;
+#endif
     if (g_win32)
         light = (HBRUSH)GetStockObject(WHITE_BRUSH);
     else
