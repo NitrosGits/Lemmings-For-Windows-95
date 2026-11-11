@@ -1,0 +1,58 @@
+  ctl class 'Button' id 1 text 'OK' checked 0
+  ctl class 'Button' id 2 text 'Cancel' checked 0
+  ctl class 'Button' id 8193 text 'Sound Effects On' checked 0
+  ctl class 'Button' id 8194 text 'Music On' checked 1
+  ctl class 'Button' id 8195 text 'Visual Sound Effects' checked 1
+  ctl class 'Button' id 8196 text 'Pause When Not On Top' checked 0
+  ctl class 'Button' id 388 text 'Low Resolution' checked 0
+  ctl class 'Button' id 389 text 'High Resolution' checked 1
+  ctl class 'Button' id 65535 text 'Graphics Options' checked 0
+  ctl class 'Button' id 65535 text 'Zoom' checked 0
+  ctl class 'Button' id 1000 text '1' checked 1
+  ctl class 'Button' id 1001 text '2' checked 0
+  ctl class 'Button' id 1002 text '4' checked 0
+  ctl class 'Button' id 65535 text 'Sound' checked 0
+  ctl class 'Edit' id 1002 text 'Tester' checked 0
+  ctl class 'ListBox' id 1001 text '' checked 0
+  ctl class 'Button' id 1 text 'OK' checked 0
+  ctl class 'Button' id 2 text 'Cancel' checked 0
+  ctl class 'Static' id 65535 text 'Type new player name or select from list' checked 0
+  ctl class 'Static' id 65535 text 'Lemmings' checked 0
+  ctl class 'Button' id 1003 text 'Delete Player' checked 0
+  ctl class 'ListBox' id 285 text '' checked 0
+  ctl class 'Button' id 1 text 'Ok' checked 0
+  ctl class 'Button' id 2 text 'Cancel' checked 0
+  ctl class 'IconTextClass' id 383 text 'Lemmings ' checked 0
+  ctl class 'IconTextClass' id 383 text 'Choose a new Level' checked 0
+  ctl class 'IconImageClass' id 330 text 'User4' checked 0
+  ctl class 'IconTextClass' id 339 text '--' checked 0
+  ctl class 'IconTextClass' id 340 text '--' checked 0
+  ctl class 'IconTextClass' id 341 text '-----' checked 0
+  ctl class 'IconImageClass' id 327 text 'User1' checked 0
+  ctl class 'IconImageClass' id 328 text 'User1' checked 0
+  ctl class 'IconImageClass' id 329 text 'User1' checked 0
+  ctl class 'IconImageClass' id 331 text 'User1' checked 0
+  ctl class 'IconImageClass' id 332 text 'User1' checked 0
+  ctl class 'IconImageClass' id 333 text 'User1' checked 0
+  ctl class 'IconImageClass' id 334 text 'User1' checked 0
+  ctl class 'IconImageClass' id 335 text 'User1' checked 0
+  ctl class 'IconImageClass' id 336 text 'User1' checked 0
+  ctl class 'IconImageClass' id 337 text 'User1' checked 0
+  ctl class 'IconImageClass' id 338 text 'User1' checked 0
+  ctl class 'IconTextClass' id 342 text '-' checked 0
+  ctl class 'IconTextClass' id 343 text '-' checked 0
+  ctl class 'IconTextClass' id 344 text '-' checked 0
+  ctl class 'IconTextClass' id 345 text '-' checked 0
+  ctl class 'IconTextClass' id 346 text '-' checked 0
+  ctl class 'IconTextClass' id 347 text '-' checked 0
+  ctl class 'IconTextClass' id 348 text '-' checked 0
+  ctl class 'IconTextClass' id 349 text '-' checked 0
+  ctl class 'Button' id 1 text 'OK' checked 0
+  ctl class 'Static' id 65535 text 'Lemmings' checked 0
+  ctl class 'Static' id 1024 text 'Visual Sciences Ltd.' checked 0
+  ctl class 'Static' id 1025 text 'Lemmings(TM)' checked 0
+  ctl class 'Static' id 1026 text '0.9.0.4' checked 0
+  ctl class 'Static' id 1027 text '©1995 Psygnosis Ltd.' checked 0
+  ctl class 'Static' id 1028 text 'Lemmings® is a registered trademark of Psygnosis Ltd. Windows(TM) is a trademark of Microsoft Corporation.' checked 0
+  ctl class 'Static' id 501 text '' checked 0
+  ctl class 'Button' id 65535 text 'Information' checked 0

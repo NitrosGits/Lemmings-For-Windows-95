@@ -47,7 +47,11 @@ int RegisterStatBar(HINSTANCE hInstance, STATBAR *bar, PANE *panes)
     wc.cbClsExtra = 0;
     wc.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
     wc.lpfnWndProc = StatBarProc;
+#ifdef PORT_SDL                 /* 64-bit: room for the pointer kept there (CreateStatBar; PORTING.md) */
+    wc.cbWndExtra = sizeof(STATBAR *);
+#else
     wc.cbWndExtra = 4;
+#endif
     return RegisterClass(&wc);
 }
 

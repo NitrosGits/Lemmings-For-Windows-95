@@ -19,7 +19,11 @@ int g_numUsers = -1;
 
 char g_userEdit[128];
 char g_userDir[256];
+#ifdef PORT_SDL                 /* the native build: room for a real path, not just the */
+char g_nameDb[MAX_PATH];        /* 36 characters of "C:\Program Files\WinLemm\usr00000.db" (PORTING.md) */
+#else
 char g_nameDb[32];
+#endif
 
 /* 0x410dc0 */
 void LoadSettings(void)

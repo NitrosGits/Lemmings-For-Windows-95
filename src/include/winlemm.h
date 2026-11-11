@@ -93,7 +93,11 @@ extern char **g_userNames;
 extern int pad_hdr_numusers;    /* was g_numUsers: the original declares it in user.cpp only */
 extern char g_userEdit[128];
 extern char g_userDir[256];
+#ifdef PORT_SDL                 /* the native build: room for a real path (user.cpp) */
+extern char g_nameDb[MAX_PATH];
+#else
 extern char g_nameDb[32];
+#endif
 void LoadSettings(void);
 void SaveSettings(void);
 void CopyDatabase(char *dest);

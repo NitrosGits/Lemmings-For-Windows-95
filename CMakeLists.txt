@@ -4,10 +4,16 @@
 #   cmake --build build/native
 #   build/native/lemmings --data orig/WINLEMM
 #
-# The 7 DLLs become static libraries linked into one executable with the
-# Win32 layer (port/src) and the platform's own backend: AppKit and Core Audio
-# on macOS (port/macos). Other systems get theirs later (PORTING.md, 9). The
-# 32-bit builds (Makefile, tools/msvc) are separate and unchanged.
+# The 7 DLLs become static libraries linked into one executable. On macOS it
+# is linked with the Win32 layer (port/src) and the platform's own backend,
+# AppKit and Core Audio (port/macos). On 64-bit Windows the game runs on the
+# real Win32, with one small support file (port/windows; PORTING.md, 10):
+#
+#   cmake -S . -B build/win64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=port/windows/llvm-mingw.cmake
+#   cmake --build build/win64          # build/win64/Lemmings64.exe
+#
+# Linux gets its backend later (PORTING.md, 9). The 32-bit builds (Makefile,
+# tools/msvc) are separate and unchanged.
 
 cmake_minimum_required(VERSION 3.21)
 project(Lemmings VERSION 1.0 LANGUAGES C CXX)
@@ -16,10 +22,16 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
 endif()
 
-if(NOT APPLE)
-  message(FATAL_ERROR "The native build has a backend for macOS only so far (PORTING.md, section 9): "
-                      "Windows builds use the Makefile, Linux gets a GTK backend later.")
+if(WIN32)
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    message(FATAL_ERROR "This is the 64-bit build: 32-bit Windows builds use the Makefile.")
+  endif()
+elseif(NOT APPLE)
+  message(FATAL_ERROR "The native build is for macOS and 64-bit Windows so far (PORTING.md, sections 9 and 10): "
+                      "Linux gets a GTK backend later.")
 endif()
+
+if(APPLE)
 enable_language(OBJC)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
@@ -48,11 +60,20 @@ endif()
 # The backend: windows, input, menus, controls, sound and the MIDI synthesizer
 # are the platform's own (PORTING.md, section 3)
 include(port/macos/macos.cmake)
+endif()
 
 # ---- The game ----
-# What every game source gets: the layer's Win32 headers first, the original
-# headers, and port_prefix.h forced in (the C runtime pieces).
-set(GAME_FLAGS -include port_prefix.h -fno-strict-aliasing)
+# What every game source gets. macOS: the layer's Win32 headers first, the
+# original headers, and port_prefix.h forced in (the C runtime pieces).
+# Windows: the system's headers, and win64_prefix.h forced in (the few calls
+# that go to port/windows/win64.c).
+if(APPLE)
+  set(GAME_INCLUDES port/include src/include)
+  set(GAME_FLAGS -include port_prefix.h -fno-strict-aliasing)
+else()
+  set(GAME_INCLUDES port/windows src/include)
+  set(GAME_FLAGS -include win64_prefix.h -fno-strict-aliasing)
+endif()
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
   list(APPEND GAME_FLAGS -w)    # the decompiled code is kept as it is
 endif()
@@ -61,7 +82,7 @@ function(game_module name)
   cmake_parse_arguments(M "" "" "SOURCES;DEFINES" ${ARGN})
   add_library(${name} STATIC ${M_SOURCES})
   set_target_properties(${name} PROPERTIES C_STANDARD 99 C_EXTENSIONS ON CXX_STANDARD 98 CXX_EXTENSIONS ON)
-  target_include_directories(${name} PRIVATE port/include src/include)
+  target_include_directories(${name} PRIVATE ${GAME_INCLUDES})
   target_compile_definitions(${name} PRIVATE PORT_SDL ${M_DEFINES})
   target_compile_options(${name} PRIVATE ${GAME_FLAGS}
     $<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions -fno-rtti -fno-threadsafe-statics>)
@@ -87,9 +108,19 @@ game_module(process SOURCES ${PROCESS_SRC}
   DEFINES g_scale=process_g_scale g_list=process_g_list g_list2=process_g_list2
           ProcessLemmings=process_ProcessLemmings)
 file(GLOB LEMMINGS_SRC CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/src/lemmings/*.cpp)
-game_module(lemmings_exe SOURCES ${LEMMINGS_SRC} DEFINES PORT_MODULE_RAND=port_exe_seed)
+if(APPLE)
+  game_module(lemmings_exe SOURCES ${LEMMINGS_SRC} DEFINES PORT_MODULE_RAND=port_exe_seed)
+else()
+  # the program's entry is port/windows/win64.c's, which calls the game's
+  game_module(lemmings_exe SOURCES ${LEMMINGS_SRC} DEFINES PORT_MODULE_RAND=port_exe_seed WinMain=game_WinMain)
+endif()
 
-add_executable(lemmings $<TARGET_OBJECTS:winlayer>)
 # in dependency order, for linkers that read archives once
-target_link_libraries(lemmings PRIVATE lemmings_exe process loadlvl render readdib filehand gameover vsmem winlayer)
-lemmings_macos_target(lemmings)
+set(GAME_MODULES lemmings_exe process loadlvl render readdib filehand gameover vsmem)
+if(APPLE)
+  add_executable(lemmings $<TARGET_OBJECTS:winlayer>)
+  target_link_libraries(lemmings PRIVATE ${GAME_MODULES} winlayer)
+  lemmings_macos_target(lemmings)
+else()
+  include(port/windows/windows.cmake)
+endif()
