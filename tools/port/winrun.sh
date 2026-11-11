@@ -22,7 +22,7 @@ ORIG=${ORIG:-$ROOT/orig/WINLEMM}
 ORIG=${ORIG:A}
 OUT=$ROOT/build/runs-win64
 R=$OUT/$1.run
-export WINEPREFIX=${WINEPREFIX:-$ROOT/build/wineprefix64} WINEDEBUG=-all
+export WINEPREFIX=${WINEPREFIX:-$ROOT/build/wineprefix64} WINEDEBUG=${WINEDEBUG:--all}
 win() { print -r -- "Z:${1//\//\\}" }   # a Unix path as Wine sees it
 reg() { print -r -- "${$(win $1)//\\/\\\\}" }   # ... inside a .reg file's string
 

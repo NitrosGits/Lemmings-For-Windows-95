@@ -22,7 +22,8 @@ driven by system clicks and keys end in the same control states as the drawn
 controls did. Visual C++ 2.2 still matches all 696 functions with the port's
 source changes, and the MinGW build is unchanged. A tool window dragged out of
 the main window has only been tried by a scripted drag (it becomes a window
-of its own, with its buttons); `linux-64` and `windows-64` are untried.
+of its own, with its buttons); `linux-64` is untried. On `windows-64` the game
+also builds as a 64-bit Windows program on the real Win32 (section 10).
 
 Since 2026-11-10 the port also looks like a Mac program (section 3): the
 system's light or dark colours, system labels in the dialogs, the skill panel
@@ -478,9 +479,9 @@ against a build of `main` (identical apart from timestamps), and a clean
   also looks at `../Resources/WINLEMM` (an app bundle; harmless elsewhere),
   and the desktop's height leaves 28 pixels for a system caption (the macOS
   value). To revisit on `linux-64` and `windows-64`.
-- **Windows-64 and Linux later.** `windows-64` becomes a plain Win32 x64 build
-  of the game without the layer (the system has Win32); `linux-64` gets a GTK
-  backend of `plat.h`. Until then CMake builds only on macOS.
+- **Windows-64 and Linux.** `windows-64` is a plain Win32 x64 build of the
+  game without the layer (section 10); `linux-64` gets a GTK backend of
+  `plat.h` later.
 
 ---
 
@@ -626,6 +627,84 @@ answers:
 The game sources' `PORT_SDL` macro kept its name: it marks the native 64-bit
 build whatever the backend, and renaming it would touch every game file it
 guards.
+
+---
+
+## 10. 64-bit Windows (`windows-64`)
+
+Windows has Win32, so there is no layer here: the game's sources are compiled
+for x86-64 (or ARM64) Windows against the system's own headers and linked,
+the seven DLLs with them, into one program, `Lemmings64.exe`
+(`LemmingsArm64.exe`). It can sit in the game's folder beside the 32-bit
+`LEMMINGS.EXE`, whose DLLs it does not use, and needs only Windows 10 or
+later (its C runtime, ucrt, is part of Windows).
+
+```
+cmake -S . -B build/win64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=port/windows/llvm-mingw.cmake
+cmake --build build/win64                       # build/win64/Lemmings64.exe
+build/win64/Lemmings64.exe --data C:\WINLEMM    # or put it into that folder
+```
+
+llvm-mingw (the 32-bit build's compiler) on macOS, Linux or Windows, its `bin`
+on the PATH or `LLVM_MINGW` set; `-DLEMMINGS_ARCH=aarch64` builds for Windows
+on ARM. `.github/workflows/windows64-build.yml` builds both on every push to
+`windows-64` and checks that they need Windows' own libraries only.
+
+**`port/windows`.** `win64_prefix.h` is forced into every game source and
+sends a few calls to `win64.c`, each because a 64-bit program on today's
+Windows cannot make it as the game did in 1995:
+
+| Call | Why | What happens |
+|---|---|---|
+| `RegOpenKeyEx`, `RegCreateKeyEx` | the game keeps its settings under `HKEY_LOCAL_MACHINE`, opened for writing; an ordinary user's 64-bit program may not, and gets no virtual store | the game's key is the same path under `HKEY_CURRENT_USER`; other machine keys open to read |
+| `RegQueryValueEx("ProgramFilesDir")` | the players' level databases went into `Program Files\WinLemm` | the user's roaming application data, `Visual Sciences` (or `LEMMINGS_USERDIR`) |
+| `GetDeviceCaps` | the game warns at every start unless the display has 256 colours | it is told 256 colours and a palette; it draws through 8-bit DIB sections, which Windows shows as they are |
+| `WinHelp` | no viewer for `LEMMINGS.HLP` since Vista | `MANUALS\ENGLISH.PDF` opens |
+| `DialogBoxParam` | the game's dialog procedures return a 32-bit `BOOL`, Win64's an `INT_PTR` | every dialog runs through a procedure that calls the game's and widens the answer |
+| `rand`, `srand` | each DLL had its own copy of the runtime | Visual C++'s generator with one seed per module |
+| `GetCursorPos`, `GetAsyncKeyState` | (tests only) | the harness's pointer and keys in a scripted run |
+
+`win64.c` also has the program's entry (it finds the data folder: `--data`,
+`LEMMINGS_DATA`, the current folder, the program's own) and the three
+functions the macOS look calls (section 5): the game draws its own skill
+panel and status bar here, and the About box names the real system
+(`RtlGetVersion`, memory in GB). `new.cpp` is `operator new` on `malloc`, so
+no C++ runtime is linked.
+
+**Source changes** beyond those of section 5, both inside `#ifdef PORT_SDL`:
+`statusbar.cpp` registers its class with `cbWndExtra = sizeof(STATBAR *)` (it
+was 4: on Win64 the pointer was not stored and the bar stayed blank; the
+layer on macOS had been forgiving), and `user.cpp`/`winlemm.h` make
+`g_nameDb` `MAX_PATH` long (the database's path is no longer the 36
+characters of `C:\Program Files\WinLemm\usr00000.db`).
+
+**Checks.** `port/windows/harness.c` is the Wine proxy's harness
+(`tools/harness/proxy.c`) built into the program (`LEMMINGS_HARNESS=1`): the
+same commands, the same lemming log. `tools/port/winrun.sh` is the
+counterpart of `tools/wine/run.sh` (its own Wine prefix,
+`build/wineprefix64`), `tools/port/winchecks.sh` runs everything:
+
+| Check | Against | Result (2026-11-11, Wine 11.0 on macOS) |
+|---|---|---|
+| `l1`, `dig`, `nuke`, `ff` | the original's `hd-base-l1`, `hd-base-dig`, `s43-nuke-orig2`, `hd-base-ff` | MATCH |
+| `bash`, `block`, `bomb`, `build`, `sdig`, `float`, `mine` | the suite's `suite-NAME-base` (standard resolution) | MATCH |
+| `f2` | Fun 2 "Only floaters can survive this" through the Choose Level dialog, four floaters given: `s45-f2-float`, made with `tools/wine/run.sh s45-f2-float 330 "<the same commands>" 2` | MATCH over 330 updates; four float down, the fifth splats |
+| `dialogs` | the four dialogs' controls as `tools/port/expect/win-dialogs.txt` | MATCH |
+| `exit` | File > Exit | exit code 0 |
+| `rate` (not in the default list) | `suite-rate-base` | differs, and so does the original from its own log today: the + and - buttons repeat on a 64 ms timer of real time while held, so the rate reached is not a matter of updates |
+
+The harness's thread used to race the game as the proxy's does (the nuke's
+double click landed one update late in a fresh Wine prefix): now the game
+stops at the end of the update the thread waits for until the thread has
+posted what follows. With sound on (`SOUND=1`, `WINEDEBUG=+mci,+winmm`) the
+MCI sequencer commands all return 0, `midiOutOpen` succeeds and the effects
+are written with `waveOutWrite`; what comes out was not measured.
+
+**Not done.** It has run under Wine only, never on a real Windows; the ARM64
+program builds but has not been run at all. No manifest: dialogs have the
+classic look and Windows scales the window on a high-DPI display. Visual
+C++ 2.2 still matches LEMMINGS (the same log), `make` builds, and the macOS
+build and its checks pass on this branch.
 
 ---
 

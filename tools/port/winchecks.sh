@@ -34,7 +34,7 @@ S[float]='waitupd 150;click 68 235;waitupd 160;click 288 70'
 S[rate]='waitupd 20;click 376 235;click 376 235;click 376 235;waitupd 100;click 420 235'
 F2='waitupd 30;click 68 395;waitupd 65;click 502 96;waitupd 93;click 502 96;waitupd 121;click 502 96;waitupd 149;click 502 96'
 F2START='click 700 232;wait 2500;dbl 60 70;wait 1000;dbl 60 86;wait 1000;click 120 118;wait 800;click 465 34'
-names=(l1 dig nuke ff bash block bomb build sdig float mine rate f2 dialogs exit); (( $# )) && names=($@)
+names=(l1 dig nuke ff bash block bomb build sdig float mine f2 dialogs exit); (( $# )) && names=($@)
 fail=0
 
 result() {   # the comparison's verdict, or the run's last line

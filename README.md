@@ -167,6 +167,8 @@ The game finds its data from `--data`, the `LEMMINGS_DATA` variable, or a `WINLE
 
 `-DLEMMINGS_MACOS_BUNDLE=ON` builds `Lemmings.app` instead; copy the `WINLEMM` folder into `Lemmings.app/Contents/Resources` to play it from the Finder. The [macOS build workflow](.github/workflows/macos-build.yml) builds it on every push to `macOS-64` (artifact `lemmings-macos-arm64`).
 
+On the `windows-64` branch the same sources also build as a native 64-bit Windows program, `Lemmings64.exe` (and `LemmingsArm64.exe`), on the real Win32 with no layer: `cmake -S . -B build/win64 -G Ninja -DCMAKE_TOOLCHAIN_FILE=port/windows/llvm-mingw.cmake && cmake --build build/win64` with llvm-mingw on the PATH. Put it into the folder of an original installation or start it with `--data FOLDER`; settings go to the user's own registry key and the players' progress to the user's application data. `tools/port/winchecks.sh` replays it under Wine against the original game's logs (PORTING.md, section 10).
+
 `tools/port/run.sh NAME UPDATES 'commands' BASELINE` plays the game under the layer's test harness (the commands of `tools/wine/run.sh`) and compares its lemming log with a log of the original game, e.g. `tools/port/run.sh l1 300 '' build/runs/hd-base-l1.txt`; `tools/port/checks.sh` runs all the checks of PORTING.md, section 8.
 
 ---

@@ -1,0 +1,69 @@
+# Builds the native 64-bit Windows game (PORTING.md, section 10): one program
+# on the real Win32, Lemmings64.exe for x64 and LemmingsArm64.exe for Windows
+# on ARM, cross-compiled with llvm-mingw as in development. Both are the
+# artifact. The game's data files are not part of the repository, so CI only
+# builds: put the program into the folder of an original installation (beside
+# GFX, LEVEL, SOUND), or start it with --data FOLDER.
+name: Windows 64-bit build
+
+on:
+  push:
+    branches: [windows-64]
+    paths-ignore: ['**.md', 'docs/**']
+  pull_request:
+    branches: [windows-64]
+    paths-ignore: ['**.md', 'docs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  win64:
+    name: Lemmings64.exe and LemmingsArm64.exe (llvm-mingw)
+    runs-on: ubuntu-24.04
+    env:
+      LLVM_MINGW: llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64
+      LLVM_MINGW_SHA256: cee8d2ce3da5145ce4dc882e70d0b0719a783d53a99752c60948fc0659975a65
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install llvm-mingw and Ninja
+        run: |
+          curl -sSLfo "$RUNNER_TEMP/llvm-mingw.tar.xz" \
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/$LLVM_MINGW.tar.xz"
+          echo "$LLVM_MINGW_SHA256  $RUNNER_TEMP/llvm-mingw.tar.xz" | sha256sum -c -
+          tar -xf "$RUNNER_TEMP/llvm-mingw.tar.xz" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+          sudo apt-get install -y ninja-build
+
+      - name: Build for x64
+        run: |
+          cmake -S . -B build/win64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=port/windows/llvm-mingw.cmake
+          cmake --build build/win64
+
+      - name: Build for ARM64
+        run: |
+          cmake -S . -B build/winarm64 -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=port/windows/llvm-mingw.cmake -DLEMMINGS_ARCH=aarch64
+          cmake --build build/winarm64
+
+      - name: Check the programs
+        # each is there, and needs nothing but Windows' own libraries
+        run: |
+          for f in build/win64/Lemmings64.exe build/winarm64/LemmingsArm64.exe; do
+            test -s "$f" || { echo "missing $f"; exit 1; }
+            llvm-objdump -p "$f" | grep 'DLL Name' | sort -u | tee dlls.txt
+            if grep -viE 'DLL Name: (KERNEL32|USER32|GDI32|ADVAPI32|WINMM|VERSION|SHELL32|api-ms-win-crt-[a-z0-9-]+)\.dll' dlls.txt; then
+              echo "$f needs a library that is not part of Windows"; exit 1
+            fi
+          done
+          mkdir out && cp build/win64/Lemmings64.exe build/winarm64/LemmingsArm64.exe out/
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: lemmings-win64
+          path: out/
