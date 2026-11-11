@@ -27,18 +27,18 @@ jobs:
     name: Lemmings64.exe and LemmingsArm64.exe (llvm-mingw)
     runs-on: ubuntu-24.04
     env:
-      LLVM_MINGW: llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64
-      LLVM_MINGW_SHA256: cee8d2ce3da5145ce4dc882e70d0b0719a783d53a99752c60948fc0659975a65
+      MINGW_DIST: llvm-mingw-20260826-ucrt-ubuntu-22.04-x86_64
+      MINGW_SHA256: cee8d2ce3da5145ce4dc882e70d0b0719a783d53a99752c60948fc0659975a65
     steps:
       - uses: actions/checkout@v7
 
       - name: Install llvm-mingw and Ninja
         run: |
           curl -sSLfo "$RUNNER_TEMP/llvm-mingw.tar.xz" \
-            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/$LLVM_MINGW.tar.xz"
-          echo "$LLVM_MINGW_SHA256  $RUNNER_TEMP/llvm-mingw.tar.xz" | sha256sum -c -
+            "https://github.com/mstorsjo/llvm-mingw/releases/download/20260826/$MINGW_DIST.tar.xz"
+          echo "$MINGW_SHA256  $RUNNER_TEMP/llvm-mingw.tar.xz" | sha256sum -c -
           tar -xf "$RUNNER_TEMP/llvm-mingw.tar.xz" -C "$RUNNER_TEMP"
-          echo "$RUNNER_TEMP/$LLVM_MINGW/bin" >> "$GITHUB_PATH"
+          echo "$RUNNER_TEMP/$MINGW_DIST/bin" >> "$GITHUB_PATH"
           sudo apt-get install -y ninja-build
 
       - name: Build for x64
